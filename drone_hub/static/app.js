@@ -16,6 +16,12 @@ let runningStep = null;  // 1-based index into the FLATTENED program
 let flatMap = [];        // flattened index -> program index (for highlights)
 let lastStatus = null;
 let trail = [];
+let radarFrom = null, radarTo = null, radarLed = [55, 213, 242];
+let radarStart = 0, radarDuration = 1000, radarLastPoll = 0;
+let radarFrame = null, radarFace = null, radarFaceKey = "";
+let radarSweepGradient = null, radarSweepKey = "";
+let radarPixelRatio = 1, radarCanvasDirty = true;
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 /* ---------------- helpers ---------------- */
 
@@ -103,7 +109,7 @@ function renderDroneCards() {
         droneId = d.id;
         sessionStorage.setItem("droneToken", token);
         sessionStorage.setItem("droneId", droneId);
-        trail = [];
+        resetRadar();
         $("pickOverlay").classList.add("hidden");
         toast(`You fly the ${d.name}, ${myName}! 🎉`);
       }
@@ -122,6 +128,7 @@ function showTab(fly) {
   $("tabCode").classList.toggle("active", !fly);
   $("flyPage").classList.toggle("hidden", !fly);
   $("codePage").classList.toggle("hidden", fly);
+  syncRadarLoop();
 }
 $("tabFly").addEventListener("click", () => showTab(true));
 $("tabCode").addEventListener("click", () => showTab(false));
@@ -360,19 +367,26 @@ async function poll() {
     lastStatus = s;
     const d = myDrone();
 
-    $("modeChip").textContent = s.mode === "practice" ? "🎮 Practice" : "🚁 Real";
+    $("modeChip").textContent = s.mode === "practice" ? "PRACTICE" : "LIVE";
+    document.body.classList.remove("radar-stale");
+    document.body.classList.toggle("flying", !!(d && d.flying));
     if (d) {
       $("droneChip").textContent = `● ${d.name}`;
       $("droneChip").style.background = `rgb(${d.colour.join(",")})`;
       $("droneChip").style.color = "#fff";
-      const battery = d.battery < 0 ? "?" : `${d.battery}%`;
-      $("batteryChip").textContent = `🔋 ${battery}`;
+      const battery = d.battery < 0 ? "—" : `${d.battery}%`;
+      $("batteryChip").textContent = battery;
       $("batteryChip").classList.toggle("warn", d.battery >= 0 && d.battery < 30);
-      $("pilotChip").textContent = `👤 ${d.pilot || "nobody"}`;
+      $("batteryChip").classList.toggle("caution", d.battery >= 30 && d.battery < 50);
+      $("batteryChip").classList.toggle("known", d.battery >= 0);
+      $("pilotChip").textContent = d.pilot || "—";
     } else {
-      $("droneChip").textContent = "🎨 pick a drone";
+      $("droneChip").textContent = "PICK A DRONE";
       $("droneChip").style.background = "";
       $("droneChip").style.color = "";
+      $("batteryChip").textContent = "—";
+      $("pilotChip").textContent = "—";
+      $("batteryChip").classList.remove("warn", "caution", "known");
     }
 
     const now = $("nowBar");
@@ -395,53 +409,348 @@ async function poll() {
 
     if (!$("pickOverlay").classList.contains("hidden")) renderDroneCards();
 
-    $("mapPanel").classList.toggle("hidden", s.mode !== "practice" || !d);
-    if (s.mode === "practice" && d && d.pose) drawMap(d.pose, d.led);
+    const showMap = s.mode === "practice" && !!d;
+    $("mapPanel").classList.toggle("hidden", !showMap);
+    if (showMap && d.pose) updateRadarPose(d.pose, d.led);
+    syncRadarLoop();
   } catch (err) {
-    $("modeChip").textContent = "⛔ No connection";
+    $("modeChip").textContent = "NO LINK";
+    document.body.classList.remove("flying");
+    document.body.classList.add("radar-stale");
+    stopRadarLoop();
   }
   setTimeout(poll, 1000);
 }
 
 /* ---------------- practice map ---------------- */
 
-function drawMap(pose, led) {
-  const canvas = $("map");
-  const ctx = canvas.getContext("2d");
-  const w = canvas.width, h = canvas.height;
-  const scale = w / 400; // 4 m x 4 m practice sky
-  const cx = w / 2 + pose.x * scale;
-  const cy = h / 2 - pose.y * scale;
+function poseCopy(pose) {
+  const finite = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+  };
+  return {
+    x: finite(pose.x),
+    y: finite(pose.y),
+    altitude: finite(pose.altitude),
+    heading: finite(pose.heading),
+    trick: pose.trick || null,
+  };
+}
 
-  trail.push([cx, cy]);
-  if (trail.length > 150) trail.shift();
+function resetRadar() {
+  radarFrom = null;
+  radarTo = null;
+  radarLastPoll = 0;
+  trail = [];
+  syncRadarLoop();
+}
 
-  ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = "#c9e4f8";
-  ctx.lineWidth = 1;
-  for (let g = 0; g <= w; g += 50 * scale) {
-    ctx.beginPath(); ctx.moveTo(g, 0); ctx.lineTo(g, h); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, g); ctx.lineTo(w, g); ctx.stroke();
+function updateRadarPose(pose, led) {
+  const now = performance.now();
+  const next = poseCopy(pose);
+  if (radarTo) {
+    radarFrom = interpolatedPose(now) || radarTo;
+    radarTo = next;
+    radarDuration = radarLastPoll
+      ? Math.max(400, Math.min(1250, now - radarLastPoll))
+      : 1000;
+  } else {
+    radarFrom = next;
+    radarTo = next;
+    radarDuration = 1;
   }
-  ctx.fillStyle = "#b7d9f2";
-  ctx.beginPath(); ctx.arc(w / 2, h / 2, 14, 0, Math.PI * 2); ctx.fill();
+  radarStart = now;
+  radarLastPoll = now;
+  radarLed = Array.isArray(led) ? led.slice(0, 3) : [55, 213, 242];
+  const lastTrailPoint = trail[trail.length - 1];
+  if (!lastTrailPoint || Math.hypot(next.x - lastTrailPoint.x, next.y - lastTrailPoint.y) >= 1) {
+    trail.push({ x: next.x, y: next.y, time: now });
+  }
+  while (trail.length > 150 || (trail[0] && now - trail[0].time > 90000)) trail.shift();
+}
 
-  if (trail.length > 1) {
-    ctx.strokeStyle = "#7fc2ef";
-    ctx.lineWidth = 3;
+function interpolatedPose(now) {
+  if (!radarTo) return null;
+  const from = radarFrom || radarTo;
+  const t = Math.max(0, Math.min(1, (now - radarStart) / radarDuration));
+  const turn = ((radarTo.heading - from.heading + 540) % 360) - 180;
+  return {
+    x: from.x + (radarTo.x - from.x) * t,
+    y: from.y + (radarTo.y - from.y) * t,
+    altitude: from.altitude + (radarTo.altitude - from.altitude) * t,
+    heading: (from.heading + turn * t + 360) % 360,
+    trick: radarTo.trick || (t < 1 ? from.trick : null),
+  };
+}
+
+function radarVisible() {
+  const panel = $("mapPanel");
+  return !document.hidden && panel && !panel.classList.contains("hidden") &&
+    !$("flyPage").classList.contains("hidden");
+}
+
+function stopRadarLoop() {
+  if (radarFrame !== null) cancelAnimationFrame(radarFrame);
+  radarFrame = null;
+}
+
+function syncRadarLoop() {
+  if (!radarVisible() || !radarTo || reducedMotion.matches) {
+    stopRadarLoop();
+    if (radarVisible() && radarTo && reducedMotion.matches) {
+      const now = performance.now();
+      drawMap(radarTo, radarLed, null, now);
+    }
+    return;
+  }
+  if (radarFrame === null) radarFrame = requestAnimationFrame(radarTick);
+}
+
+function radarTick(now) {
+  radarFrame = null;
+  if (!radarVisible() || reducedMotion.matches) {
+    syncRadarLoop();
+    return;
+  }
+  const pose = interpolatedPose(now);
+  if (pose) drawMap(pose, radarLed, ((now % 4000) / 4000) * Math.PI * 2 - Math.PI / 2, now);
+  if (radarVisible()) radarFrame = requestAnimationFrame(radarTick);
+}
+
+function markRadarCanvasDirty() {
+  radarCanvasDirty = true;
+  radarFace = null;
+  radarSweepGradient = null;
+  syncRadarLoop();
+}
+
+function ensureRadarCanvas(canvas) {
+  if (!radarCanvasDirty) return;
+  const cssSize = Math.round(canvas.getBoundingClientRect().width);
+  if (cssSize < 2) return;
+  const ratio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const backingSize = Math.round(cssSize * ratio);
+  if (canvas.width !== backingSize || canvas.height !== backingSize || radarPixelRatio !== ratio) {
+    canvas.width = backingSize;
+    canvas.height = backingSize;
+    radarPixelRatio = ratio;
+    radarFace = null;
+    radarFaceKey = "";
+    radarSweepGradient = null;
+    radarSweepKey = "";
+  }
+  radarCanvasDirty = false;
+}
+
+function radarMetrics(w, h) {
+  const radius = Math.max(60, Math.min(w, h) / 2 - 24);
+  return { ox: w / 2, oy: h / 2, radius, scale: radius / 200 };
+}
+
+function radarFaceFor(canvas, w, h) {
+  const key = `${canvas.width}x${canvas.height}@${radarPixelRatio}`;
+  if (radarFace && radarFaceKey === key) return radarFace;
+
+  const makeLayer = () => {
+    const layer = document.createElement("canvas");
+    layer.width = canvas.width;
+    layer.height = canvas.height;
+    return layer;
+  };
+  const base = makeLayer();
+  const overlay = makeLayer();
+  radarFace = { base, overlay };
+  radarFaceKey = key;
+  radarSweepGradient = null;
+
+  const { ox, oy, radius, scale } = radarMetrics(w, h);
+  const baseCtx = base.getContext("2d");
+  baseCtx.setTransform(radarPixelRatio, 0, 0, radarPixelRatio, 0, 0);
+  const bg = baseCtx.createRadialGradient(ox, oy, 0, ox, oy, radius * 1.35);
+  bg.addColorStop(0, "#0b1c2b");
+  bg.addColorStop(0.68, "#07131f");
+  bg.addColorStop(1, "#02060d");
+  baseCtx.fillStyle = bg;
+  baseCtx.fillRect(0, 0, w, h);
+
+  const ctx = overlay.getContext("2d");
+  ctx.setTransform(radarPixelRatio, 0, 0, radarPixelRatio, 0, 0);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(ox, oy, radius, 0, Math.PI * 2);
+  ctx.clip();
+
+  const grid = (step, colour, lineWidth) => {
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = lineWidth;
     ctx.beginPath();
-    ctx.moveTo(trail[0][0], trail[0][1]);
-    trail.forEach(([x, y]) => ctx.lineTo(x, y));
+    for (let x = ox % step; x <= w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+    for (let y = oy % step; y <= h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+    ctx.stroke();
+  };
+  grid(25 * scale, "rgba(103, 147, 181, 0.12)", 0.7);
+  grid(50 * scale, "rgba(111, 161, 195, 0.19)", 1);
+
+  ctx.strokeStyle = "rgba(130, 177, 207, 0.3)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(ox, oy - radius); ctx.lineTo(ox, oy + radius);
+  ctx.moveTo(ox - radius, oy); ctx.lineTo(ox + radius, oy);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(128, 180, 210, 0.38)";
+  ctx.fillStyle = "#9eb6c9";
+  ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  [50, 100, 150].forEach((centimetres) => {
+    const ringRadius = centimetres * scale;
+    ctx.beginPath();
+    ctx.arc(ox, oy, ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    const angle = -Math.PI / 4;
+    ctx.fillText(`${(centimetres / 100).toFixed(1)}M`,
+      ox + Math.cos(angle) * ringRadius + 5,
+      oy + Math.sin(angle) * ringRadius - 2);
+  });
+
+  ctx.strokeStyle = "rgba(151, 198, 224, 0.56)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(ox, oy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  for (let degrees = 0; degrees < 360; degrees += 10) {
+    const angle = (degrees * Math.PI) / 180 - Math.PI / 2;
+    const major = degrees % 30 === 0;
+    const inner = radius - (major ? 9 : 5);
+    ctx.strokeStyle = major ? "rgba(189, 222, 239, 0.78)" : "rgba(137, 181, 207, 0.5)";
+    ctx.lineWidth = major ? 1.25 : 0.8;
+    ctx.beginPath();
+    ctx.moveTo(ox + Math.cos(angle) * inner, oy + Math.sin(angle) * inner);
+    ctx.lineTo(ox + Math.cos(angle) * radius, oy + Math.sin(angle) * radius);
     ctx.stroke();
   }
+
+  ctx.fillStyle = "#d2e0eb";
+  ctx.font = "700 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("N", ox, oy - radius - 12);
+  ctx.fillText("E", ox + radius + 12, oy);
+  ctx.fillText("S", ox, oy + radius + 12);
+  ctx.fillText("W", ox - radius - 12, oy);
+
+  ctx.fillStyle = "rgba(87, 220, 245, 0.13)";
+  ctx.strokeStyle = "rgba(87, 220, 245, 0.82)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(ox, oy, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#bff5ff";
+  ctx.font = "800 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  ctx.fillText("H", ox, oy + 0.5);
+  return radarFace;
+}
+
+function drawSweep(ctx, w, h, angle) {
+  const { ox, oy, radius } = radarMetrics(w, h);
+  const key = `${w}x${h}@${radarPixelRatio}`;
+  if (!radarSweepGradient || radarSweepKey !== key) {
+    radarSweepGradient = ctx.createRadialGradient(ox, oy, 0, ox, oy, radius);
+    radarSweepGradient.addColorStop(0, "rgba(55, 213, 242, 0.72)");
+    radarSweepGradient.addColorStop(0.72, "rgba(55, 213, 242, 0.18)");
+    radarSweepGradient.addColorStop(1, "rgba(55, 213, 242, 0)");
+    radarSweepKey = key;
+  }
+
+  const span = Math.PI / 4.5;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(ox, oy, radius, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = radarSweepGradient;
+  for (let i = 0; i < 18; i++) {
+    const a0 = angle - span + span * (i / 18);
+    const a1 = angle - span + span * ((i + 1) / 18);
+    ctx.globalAlpha = 0.018 + 0.2 * Math.pow((i + 1) / 18, 2);
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.arc(ox, oy, radius, a0, a1);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 0.42;
+  ctx.strokeStyle = "#37d5f2";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(ox, oy);
+  ctx.lineTo(ox + Math.cos(angle) * radius, oy + Math.sin(angle) * radius);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTrail(ctx, w, h, now) {
+  if (trail.length < 2) return;
+  const { ox, oy, radius, scale } = radarMetrics(w, h);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(ox, oy, radius, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.lineCap = "round";
+  ctx.lineWidth = 2;
+  for (let i = 1; i < trail.length; i++) {
+    const from = trail[i - 1], to = trail[i];
+    const rank = i / (trail.length - 1);
+    const age = Math.max(0, Math.min(1, 1 - (now - to.time) / 90000));
+    const alpha = 0.52 * rank * age;
+    if (alpha <= 0.01) continue;
+    ctx.strokeStyle = `rgba(55, 213, 242, ${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(ox + from.x * scale, oy - from.y * scale);
+    ctx.lineTo(ox + to.x * scale, oy - to.y * scale);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawMap(pose, led, sweepAngle = null, now = performance.now()) {
+  const canvas = $("map");
+  ensureRadarCanvas(canvas);
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width / radarPixelRatio, h = canvas.height / radarPixelRatio;
+  const { ox, oy, radius, scale } = radarMetrics(w, h); // 4 m x 4 m practice sky
+  const dx = pose.x * scale;
+  const dy = -pose.y * scale;
+  const distance = Math.hypot(dx, dy);
+  const limit = radius - 18;
+  const clamp = distance > limit ? limit / distance : 1;
+  const cx = ox + dx * clamp;
+  const cy = oy + dy * clamp;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(radarPixelRatio, 0, 0, radarPixelRatio, 0, 0);
+  const face = radarFaceFor(canvas, w, h);
+  ctx.drawImage(face.base, 0, 0, w, h);
+  if (sweepAngle !== null) drawSweep(ctx, w, h, sweepAngle);
+  ctx.drawImage(face.overlay, 0, 0, w, h);
+  drawTrail(ctx, w, h, now);
 
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate((pose.heading * Math.PI) / 180);
-  const size = 14 + pose.altitude / 12;
-  ctx.fillStyle = `rgb(${led[0]},${led[1]},${led[2]})`;
-  ctx.strokeStyle = "#17324d";
-  ctx.lineWidth = 3;
+  const size = 13 + Math.min(10, Math.max(0, pose.altitude) / 25);
+  const rgb = [0, 1, 2].map((i) => Math.max(0, Math.min(255, Number(led[i]) || 0)));
+  const colour = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+  ctx.fillStyle = colour;
+  ctx.strokeStyle = "#e9f0fa";
+  ctx.lineWidth = 2;
+  ctx.shadowColor = colour;
+  ctx.shadowBlur = 18;
   ctx.beginPath();
   ctx.moveTo(0, -size);
   ctx.lineTo(size * 0.8, size);
@@ -449,7 +758,15 @@ function drawMap(pose, led) {
   ctx.lineTo(-size * 0.8, size);
   ctx.closePath();
   ctx.fill();
+  ctx.shadowBlur = 0;
   ctx.stroke();
+  if (distance > limit) {
+    ctx.strokeStyle = "#ffc45d";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, size + 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   if (pose.trick) {
     ctx.rotate(-((pose.heading * Math.PI) / 180));
     ctx.font = "28px sans-serif";
@@ -457,10 +774,60 @@ function drawMap(pose, led) {
   }
   ctx.restore();
 
-  const pct = Math.min(1, pose.altitude / 250);
-  $("altFill").style.transform = `scaleX(${pct})`;
-  $("altLabel").textContent = `${Math.round(pose.altitude)} cm`;
+  updateAltitude(pose.altitude);
 }
 
+function updateAltitude(altitude) {
+  const value = Math.max(0, Math.min(250, Number(altitude) || 0));
+  const pct = value / 250;
+  const fill = $("altFill");
+  const levelKey = pct.toFixed(4);
+  if (fill.dataset.level !== levelKey) {
+    fill.dataset.level = levelKey;
+    fill.style.transform = `scaleX(${pct})`;
+    fill.parentElement.style.setProperty("--altitude", `${pct * 100}%`);
+  }
+  const rounded = Math.round(value);
+  if ($("altLabel").dataset.value !== String(rounded)) {
+    $("altLabel").dataset.value = String(rounded);
+    $("altLabel").textContent = `${rounded} cm`;
+    const track = fill.parentElement;
+    track.setAttribute("aria-valuenow", String(rounded));
+    track.setAttribute("aria-valuetext", `${rounded} centimetres`);
+  }
+}
+
+function initAltitudeGauge() {
+  const track = $("altFill").parentElement;
+  track.setAttribute("role", "meter");
+  track.setAttribute("aria-label", "Altitude");
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", "250");
+  if (track.querySelector(".alt-ticks")) return;
+  const ticks = document.createElement("span");
+  ticks.className = "alt-ticks";
+  ticks.setAttribute("aria-hidden", "true");
+  for (let value = 0; value <= 250; value += 50) {
+    const tick = document.createElement("i");
+    tick.className = "alt-tick";
+    tick.dataset.value = String(value);
+    tick.style.left = `${(value / 250) * 100}%`;
+    ticks.append(tick);
+  }
+  track.append(ticks);
+}
+
+const onMotionPreference = () => syncRadarLoop();
+if (reducedMotion.addEventListener) reducedMotion.addEventListener("change", onMotionPreference);
+else reducedMotion.addListener(onMotionPreference);
+document.addEventListener("visibilitychange", syncRadarLoop);
+window.addEventListener("resize", markRadarCanvasDirty);
+window.addEventListener("orientationchange", markRadarCanvasDirty);
+if (window.ResizeObserver) {
+  const radarResizeObserver = new ResizeObserver(markRadarCanvasDirty);
+  radarResizeObserver.observe($("map"));
+}
+
+initAltitudeGauge();
 applyLevel();
 poll();

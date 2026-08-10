@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#070d18">
 <title>Drone Pilot</title>
 <link rel="icon" href="icon.png">
 <link rel="apple-touch-icon" href="icon.png">
@@ -13,87 +14,132 @@
 </head>
 <body>
 
+<!-- Reusable quadcopter mark -->
+<svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="quadMark" class="quad-mark" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <g class="quad-frame">
+        <line x1="6.9" y1="6.9" x2="10.4" y2="10.4"/><line x1="17.1" y1="6.9" x2="13.6" y2="10.4"/>
+        <line x1="6.9" y1="17.1" x2="10.4" y2="13.6"/><line x1="17.1" y1="17.1" x2="13.6" y2="13.6"/>
+        <circle cx="12" cy="12" r="1.7"/>
+      </g>
+      <g class="quad-rotors">
+        <circle cx="5" cy="5" r="2.6"/><circle cx="19" cy="5" r="2.6"/>
+        <circle cx="5" cy="19" r="2.6"/><circle cx="19" cy="19" r="2.6"/>
+      </g>
+    </g>
+  </defs>
+</svg>
+
 <!-- Join overlay: name -->
-<div id="joinOverlay" class="overlay">
-  <div class="join-card">
-    <div class="join-emoji">🚁</div>
-    <h1>Drone Pilot</h1>
-    <p>Type your name!</p>
-    <input id="nameInput" type="text" maxlength="20" placeholder="Your name" aria-label="Your name" autocomplete="off">
-    <button id="joinBtn" class="btn-big btn-go">NEXT ➜</button>
+<div id="joinOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="joinTitle" aria-describedby="joinCopy">
+  <div class="join-card preflight-card">
+    <div class="overlay-mark-frame">
+      <svg class="join-mark idle-spin" viewBox="0 0 24 24" aria-hidden="true"><use href="#quadMark"/></svg>
+      <span class="rotor-blades briefing-rotors" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    </div>
+    <span class="overlay-kicker">PRE-FLIGHT CHECK-IN</span>
+    <h1 id="joinTitle">DRONE PILOT</h1>
+    <p id="joinCopy">Ready for take-off? Tell us your pilot name.</p>
+    <label class="field-label" for="nameInput">PILOT CALLSIGN</label>
+    <input id="nameInput" class="callsign-input" type="text" maxlength="20" placeholder="YOUR NAME" aria-label="Pilot callsign" autocomplete="off" autocapitalize="words" enterkeyhint="go" spellcheck="false">
+    <button id="joinBtn" class="btn-big btn-go hardware-key"><span class="key-label">CHECK IN</span><span class="key-value">NEXT</span></button>
     <button id="watchBtn" class="btn-link">Just watch for now</button>
   </div>
 </div>
 
 <!-- Drone picker overlay -->
-<div id="pickOverlay" class="overlay hidden">
-  <div class="join-card">
-    <div class="join-emoji">🎨</div>
-    <h1>Pick your drone</h1>
+<div id="pickOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pickTitle" aria-describedby="pickCopy">
+  <div class="join-card picker-card">
+    <div class="overlay-mark-frame">
+      <svg class="join-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#quadMark"/></svg>
+    </div>
+    <span class="overlay-kicker">AIRCRAFT ASSIGNMENT</span>
+    <h1 id="pickTitle">PICK YOUR DRONE</h1>
+    <p id="pickCopy">Choose the aircraft you want to fly.</p>
     <div id="droneCards" class="drone-cards"></div>
     <button id="pickBackBtn" class="btn-link">Back</button>
   </div>
 </div>
 
 <!-- Motors-off confirm overlay -->
-<div id="emergencyOverlay" class="overlay hidden">
-  <div class="join-card">
-    <div class="join-emoji">⚠️</div>
-    <h1>Cut the motors?</h1>
-    <p>Your drone will DROP straight down. Only for real emergencies!</p>
-    <button id="confirmMotorsOff" class="btn-big btn-stop">YES — MOTORS OFF</button>
+<div id="emergencyOverlay" class="overlay hidden" role="alertdialog" aria-modal="true" aria-labelledby="emergencyTitle" aria-describedby="emergencyCopy">
+  <div class="join-card warning-card">
+    <div class="overlay-mark-frame warning-frame">
+    <svg class="join-mark amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 3 L22 20 L2 20 Z"/><line x1="12" y1="10" x2="12" y2="14.5"/><circle cx="12" cy="17" r="0.4"/>
+    </svg>
+    </div>
+    <span class="overlay-kicker warning-kicker">EMERGENCY PROCEDURE</span>
+    <h1 id="emergencyTitle">CUT THE MOTORS?</h1>
+    <p id="emergencyCopy">Your drone will <strong>DROP straight down.</strong> Only for real emergencies!</p>
+    <button id="confirmMotorsOff" class="btn-big btn-stop hardware-key"><span class="key-label">CONFIRM EMERGENCY</span><span class="key-value">YES &mdash; MOTORS OFF</span></button>
     <button id="cancelMotorsOff" class="btn-link">Cancel</button>
   </div>
 </div>
 
-<header>
-  <div class="title">🚁 Drone Pilot</div>
-  <div class="chips">
-    <span id="modeChip" class="chip">…</span>
-    <button id="droneChip" class="chip chip-drone">🎨 pick a drone</button>
-    <span id="batteryChip" class="chip">🔋 —</span>
-    <span id="pilotChip" class="chip">👤 nobody</span>
+<header class="instrument-strip">
+  <div class="title brand-lockup">
+    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><use href="#quadMark"/></svg>
+    <span class="brand-copy"><span class="brand-label">FLIGHT SYSTEM</span><span class="wordmark">DRONE PILOT</span></span>
+  </div>
+  <div class="chips telemetry-cluster" aria-label="Flight telemetry">
+    <span id="modeChip" class="chip readout link-readout" role="status" aria-live="polite">
+      CONNECTING
+    </span>
+    <button id="droneChip" class="chip chip-drone readout readout-button" type="button" aria-label="Choose drone">
+      PICK A DRONE
+    </button>
+    <span id="batteryChip" class="chip readout battery-readout">&mdash;</span>
+    <span id="pilotChip" class="chip readout">&mdash;</span>
   </div>
 </header>
 
-<div id="nowBar" class="now-bar hidden"></div>
+<div id="nowBar" class="now-bar hidden" role="status" aria-live="polite"></div>
 
 <nav class="tabs">
-  <button id="tabFly" class="tab active">🕹️ FLY</button>
-  <button id="tabCode" class="tab">🧩 CODE</button>
+  <button id="tabFly" class="tab active">FLY</button>
+  <button id="tabCode" class="tab">CODE</button>
 </nav>
 
 <!-- ============ FLY ============ -->
 <main id="flyPage" class="page">
   <div class="fly-grid">
     <section class="panel">
-      <div class="row">
-        <button class="btn-big btn-go half" data-cmd="takeoff">🛫 TAKE OFF</button>
-        <button class="btn-big btn-land half" data-cmd="land">🛬 LAND</button>
+      <div class="panel-heading">
+        <div><span class="panel-kicker">MANUAL CONTROL</span><h2>FLIGHT CONTROLS</h2></div>
+        <span class="panel-code" aria-hidden="true">CTRL-01</span>
+      </div>
+      <div class="row primary-keys">
+        <button class="btn-big btn-go half hardware-key" data-cmd="takeoff"><span class="key-label">FLIGHT</span><span class="key-value">TAKE OFF</span></button>
+        <button class="btn-big btn-land half hardware-key" data-cmd="land"><span class="key-label">RETURN</span><span class="key-value">LAND</span></button>
       </div>
 
       <div class="pad">
         <div></div>
-        <button class="btn-pad" data-move="forward">⬆️</button>
+        <button class="btn-pad hardware-key" data-move="forward" aria-label="Forward">&#9650;</button>
         <div></div>
-        <button class="btn-pad" data-move="left">⬅️</button>
-        <div class="pad-center">🚁</div>
-        <button class="btn-pad" data-move="right">➡️</button>
+        <button class="btn-pad hardware-key" data-move="left" aria-label="Left">&#9664;</button>
+        <div class="pad-center" aria-hidden="true">
+          <svg class="flight-rotor-mark" viewBox="0 0 24 24"><use href="#quadMark"/></svg>
+          <span class="rotor-blades flight-rotors"><i></i><i></i><i></i><i></i></span>
+        </div>
+        <button class="btn-pad hardware-key" data-move="right" aria-label="Right">&#9654;</button>
         <div></div>
-        <button class="btn-pad" data-move="back">⬇️</button>
+        <button class="btn-pad hardware-key" data-move="back" aria-label="Backward">&#9660;</button>
         <div></div>
       </div>
 
       <div class="row">
-        <button class="btn-mid" data-turn="turn_left">↩️ Turn</button>
-        <button class="btn-mid" data-move="up">🔼 Up</button>
-        <button class="btn-mid" data-move="down">🔽 Down</button>
-        <button class="btn-mid" data-turn="turn_right">↪️ Turn</button>
+        <button class="btn-mid hardware-key" data-turn="turn_left">&#10554; TURN</button>
+        <button class="btn-mid hardware-key" data-move="up">&#9651; UP</button>
+        <button class="btn-mid hardware-key" data-move="down">&#9661; DOWN</button>
+        <button class="btn-mid hardware-key" data-turn="turn_right">TURN &#10555;</button>
       </div>
 
       <div class="row settings">
-        <div class="setting">
-          <label>Distance</label>
+        <div class="setting" role="group" aria-labelledby="distanceLabel">
+          <label id="distanceLabel">MOVE DISTANCE</label>
           <div class="chips-row" id="distChips">
             <button class="chip-btn" data-dist="30">30</button>
             <button class="chip-btn active" data-dist="50">50</button>
@@ -101,35 +147,45 @@
           </div>
           <small>centimetres</small>
         </div>
-        <div class="setting">
-          <label>Turn</label>
+        <div class="setting" role="group" aria-labelledby="turnLabel">
+          <label id="turnLabel">TURN ANGLE</label>
           <div class="chips-row" id="turnChips">
-            <button class="chip-btn active" data-deg="90">90°</button>
-            <button class="chip-btn" data-deg="180">180°</button>
+            <button class="chip-btn active" data-deg="90">90&deg;</button>
+            <button class="chip-btn" data-deg="180">180&deg;</button>
           </div>
           <small>degrees</small>
         </div>
       </div>
 
       <div class="row">
-        <button class="btn-mid" data-cmd="flip">🤸 Flip!</button>
+        <button class="btn-mid hardware-key" data-cmd="flip">FLIP</button>
         <div class="leds" id="ledRow">
-          <button class="led" style="background:#ff5964" data-led="255,89,100"></button>
-          <button class="led" style="background:#ffd166" data-led="255,209,102"></button>
-          <button class="led" style="background:#06d6a0" data-led="6,214,160"></button>
-          <button class="led" style="background:#4cc9f0" data-led="76,201,240"></button>
-          <button class="led" style="background:#b388ff" data-led="179,136,255"></button>
+          <button class="led led-key" style="--led-colour:#ff5964;background:#ff5964" data-led="255,89,100" aria-label="Red light"></button>
+          <button class="led led-key" style="--led-colour:#ffd166;background:#ffd166" data-led="255,209,102" aria-label="Yellow light"></button>
+          <button class="led led-key" style="--led-colour:#06d6a0;background:#06d6a0" data-led="6,214,160" aria-label="Green light"></button>
+          <button class="led led-key" style="--led-colour:#4cc9f0;background:#4cc9f0" data-led="76,201,240" aria-label="Blue light"></button>
+          <button class="led led-key" style="--led-colour:#b388ff;background:#b388ff" data-led="179,136,255" aria-label="Purple light"></button>
         </div>
       </div>
     </section>
 
-    <section class="panel" id="mapPanel">
-      <h2>Practice sky 🌤️</h2>
-      <canvas id="map" width="560" height="560"></canvas>
-      <div class="alt-row">
-        <span>Height:</span>
-        <div class="alt-track"><div id="altFill" class="alt-fill"></div></div>
-        <span id="altLabel">0 cm</span>
+    <section class="panel radar-panel" id="mapPanel">
+      <div class="panel-heading">
+        <div><span class="panel-kicker">PRACTICE TELEMETRY</span><h2>RADAR AIRSPACE</h2></div>
+        <span class="radar-state"><span class="status-dot" aria-hidden="true"></span>TRACKING</span>
+      </div>
+      <div class="radar-bezel">
+        <canvas id="map" width="560" height="560" aria-label="Practice radar showing your drone position"></canvas>
+      </div>
+      <div class="alt-row alt-instrument">
+        <span class="alt-copy"><span class="readout-label">ALTITUDE</span><span id="altLabel" class="alt-value" data-value="0">0 cm</span></span>
+        <div class="alt-gauge">
+          <div class="alt-track">
+            <div id="altFill" class="alt-fill"></div>
+            <div class="alt-ticks" aria-hidden="true"><span class="alt-tick"></span><span class="alt-tick"></span><span class="alt-tick"></span><span class="alt-tick"></span><span class="alt-tick"></span><span class="alt-tick"></span></div>
+          </div>
+          <div class="alt-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span><span>150</span><span>200</span><span>250 CM</span></div>
+        </div>
       </div>
     </section>
   </div>
@@ -137,18 +193,22 @@
 
 <!-- ============ CODE ============ -->
 <main id="codePage" class="page hidden">
-  <div class="level-bar">
-    <span class="level-label">Level</span>
-    <button class="level-btn" data-level="1">1 🐣</button>
-    <button class="level-btn" data-level="2">2 🐥</button>
-    <button class="level-btn" data-level="3">3 🦉</button>
-    <button class="level-btn" data-level="4">4 🚀</button>
-    <button class="level-btn" data-level="5">5 🧑‍💻</button>
+  <div class="level-bar" role="group" aria-label="Training level">
+    <span class="level-label"><span>TRAINING</span>LEVEL</span>
+    <button class="level-btn hardware-key" data-level="1" aria-label="Training level 1">01</button>
+    <button class="level-btn hardware-key" data-level="2" aria-label="Training level 2">02</button>
+    <button class="level-btn hardware-key" data-level="3" aria-label="Training level 3">03</button>
+    <button class="level-btn hardware-key" data-level="4" aria-label="Training level 4">04</button>
+    <button class="level-btn hardware-key" data-level="5" aria-label="Training level 5">05</button>
   </div>
 
   <div class="fly-grid">
-    <section class="panel">
-      <h2>Tap blocks to build your program</h2>
+    <section class="panel code-builder">
+      <div class="panel-heading">
+        <div><span class="panel-kicker">COMMAND LIBRARY</span><h2>BUILD YOUR FLIGHT</h2></div>
+        <span class="panel-code" aria-hidden="true">PROG-01</span>
+      </div>
+      <p class="panel-instruction">Tap blocks to add them to your flight plan.</p>
       <div class="palette" id="palette">
         <button class="block b-go" data-block="takeoff" data-min-level="1">🛫<span class="bw"> Take off</span></button>
         <button class="block b-move" data-block="forward" data-min-level="1">⬆️<span class="bw"> Forward</span></button>
@@ -168,55 +228,66 @@
       </div>
 
       <div class="row settings" id="codeSettings" data-min-level="3">
-        <div class="setting">
-          <label>Distance</label>
+        <div class="setting" role="group" aria-labelledby="codeDistanceLabel">
+          <label id="codeDistanceLabel">MOVE DISTANCE</label>
           <div class="chips-row" id="codeDistChips">
             <button class="chip-btn" data-dist="30">30</button>
             <button class="chip-btn active" data-dist="50">50</button>
             <button class="chip-btn" data-dist="100">100</button>
           </div>
         </div>
-        <div class="setting">
-          <label>Turn</label>
+        <div class="setting" role="group" aria-labelledby="codeTurnLabel">
+          <label id="codeTurnLabel">TURN ANGLE</label>
           <div class="chips-row" id="codeTurnChips">
-            <button class="chip-btn active" data-deg="90">90°</button>
-            <button class="chip-btn" data-deg="180">180°</button>
+            <button class="chip-btn active" data-deg="90">90&deg;</button>
+            <button class="chip-btn" data-deg="180">180&deg;</button>
           </div>
         </div>
-        <div class="setting" id="repeatSetting" data-min-level="4">
-          <label>Repeat</label>
+        <div class="setting" id="repeatSetting" data-min-level="4" role="group" aria-labelledby="repeatLabel">
+          <label id="repeatLabel">REPEAT COUNT</label>
           <div class="chips-row" id="repeatChips">
-            <button class="chip-btn active" data-rep="2">×2</button>
-            <button class="chip-btn" data-rep="3">×3</button>
-            <button class="chip-btn" data-rep="5">×5</button>
+            <button class="chip-btn active" data-rep="2">&times;2</button>
+            <button class="chip-btn" data-rep="3">&times;3</button>
+            <button class="chip-btn" data-rep="5">&times;5</button>
           </div>
         </div>
       </div>
       <p class="hint" id="levelHint"></p>
     </section>
 
-    <section class="panel">
-      <h2>My program</h2>
-      <ol id="programList" class="program"></ol>
-      <p id="programEmpty" class="hint">No blocks yet. Tap some blocks to start!</p>
-      <div class="row">
-        <button id="runBtn" class="btn-big btn-go half">▶️ RUN</button>
-        <button id="clearBtn" class="btn-mid half">🗑️ Clear</button>
+    <section class="panel flight-plan-panel">
+      <div class="panel-heading">
+        <div><span class="panel-kicker">PROGRAM SEQUENCE</span><h2>FLIGHT PLAN</h2></div>
+        <span class="panel-code" aria-hidden="true">PLAN-01</span>
       </div>
-      <div id="pythonPanel" class="python-panel hidden">
-        <h2>🧑‍💻 The real Python code</h2>
-        <pre id="pythonCode"></pre>
+      <ol id="programList" class="program"></ol>
+      <p id="programEmpty" class="hint">Your flight plan is empty. Tap blocks on the left to add steps, then press RUN!</p>
+      <div class="row program-actions">
+        <button id="runBtn" class="btn-big btn-go half hardware-key"><span class="key-label">EXECUTE PLAN</span><span class="key-value">RUN</span></button>
+        <button id="clearBtn" class="btn-mid half hardware-key">CLEAR</button>
+      </div>
+      <div id="pythonPanel" class="python-panel terminal-window hidden">
+        <div class="terminal-titlebar">
+          <span class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="terminal-filename">mission.py</span>
+          <span class="terminal-language">PYTHON</span>
+        </div>
+        <pre id="pythonCode" aria-label="Python code for this flight plan"></pre>
       </div>
     </section>
   </div>
 </main>
 
-<footer>
-  <button id="stopBtn" class="btn-stop-bar">🛑 STOP &amp; LAND</button>
-  <button id="motorsOffBtn" class="btn-motors">motors off</button>
+<footer class="emergency-bar">
+  <span class="hazard-edge" aria-hidden="true"></span>
+  <button id="stopBtn" class="btn-stop-bar hardware-key"><span class="key-label">EMERGENCY</span><span class="key-value">STOP &amp; LAND</span></button>
+  <div class="motors-guard">
+    <span class="guard-label">EMERGENCY ONLY</span>
+    <button id="motorsOffBtn" class="btn-motors hardware-key"><span class="switch-light" aria-hidden="true"></span>MOTORS OFF</button>
+  </div>
 </footer>
 
-<div id="toast" class="toast hidden"></div>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
 <script src="app.js"></script>
 </body>

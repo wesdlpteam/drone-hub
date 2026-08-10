@@ -2,54 +2,614 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#03070d">
 <title>Teacher Screen — Drone Pilot</title>
 <link rel="icon" href="icon.png">
 <link rel="stylesheet" href="style.css">
 <style>
-  .teacher-wrap { max-width: 1100px; margin: 0 auto; padding: 10px 16px 30px; width: 100%; }
-  .teacher-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 820px) { .teacher-grid { grid-template-columns: 1fr; } }
+  :root {
+    --bg: #03070d;
+    --surface: #09111c;
+    --surface-2: #0d1826;
+    --line: #26364a;
+    --ink: #edf4fa;
+    --muted: #a8b8c8;
+    --cyan: #37d5f2;
+    --go: #2fe6a8;
+    --land: #4f9dff;
+    --stop: #ff4d5e;
+    --amber: #ffb224;
+  }
+
+  html { background: var(--bg); }
+  body {
+    display: block;
+    min-width: 0;
+    background-color: var(--bg);
+    background-image:
+      repeating-linear-gradient(0deg, rgba(117, 157, 195, 0.03) 0 1px, transparent 1px 32px),
+      repeating-linear-gradient(90deg, rgba(117, 157, 195, 0.03) 0 1px, transparent 1px 32px),
+      radial-gradient(ellipse at 50% -8%, #14243a 0%, #080f19 48%, #03070d 100%);
+    background-size: auto, auto, 100% 100%;
+    color: var(--ink);
+  }
+
+  button { min-height: 44px; }
+  button:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 3px;
+  }
+
+  .instrument-header {
+    display: block;
+    width: 100%;
+    padding: 0;
+    background: #070e17;
+    border-bottom: 1px solid #2b4057;
+    box-shadow: inset 0 -1px 0 #020509, 0 1px 0 rgba(55, 213, 242, 0.04);
+  }
+  .instrument-inner {
+    width: 100%;
+    max-width: 1240px;
+    min-height: 74px;
+    margin: 0 auto;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .brand {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+    flex: none;
+    padding: 6px;
+    background: #0a1522;
+    border: 1px solid #31445a;
+    border-radius: 5px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 0 #020509;
+  }
+  .brand-copy { display: grid; gap: 2px; min-width: 0; }
+  .brand-kicker,
+  .readout-label,
+  .eyebrow,
+  .flight-label,
+  .guard-label,
+  .board-key,
+  .manual-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .brand-name {
+    font-size: clamp(0.95rem, 2vw, 1.15rem);
+    font-weight: 850;
+    line-height: 1.1;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+  .telemetry-cluster { display: flex; align-items: stretch; margin-left: auto; }
+  .readout {
+    min-width: 230px;
+    padding: 7px 12px 8px;
+    background: #0a1421;
+    border: 1px solid #2a3b50;
+    border-radius: 4px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), inset 0 -1px 0 #03070c;
+  }
+  .readout-label { display: block; margin-bottom: 4px; }
+  /* teacher header has a real label element; suppress style.css's student-chip label stamp */
+  #modeChip::before { content: none; }
+  .readout-live-line {
+    min-width: 0;
+    min-height: 18px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .readout-value {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 0.86rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--cyan);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .status-dot {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--amber);
+  }
+  .status-dot::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: inherit;
+    background: currentColor;
+    color: inherit;
+    opacity: 0;
+    transform: scale(0.45);
+  }
+  body.hub-online .status-dot { background: var(--cyan); color: var(--cyan); }
+  body.hub-online .status-dot::after { animation: link-pulse 1.8s ease-out infinite; }
+  body.hub-offline .status-dot { background: var(--stop); color: var(--stop); }
+  body.hub-offline .readout-value { color: #ff9aa5; }
+  @keyframes link-pulse {
+    0% { opacity: 0.38; transform: scale(0.45); }
+    70%, 100% { opacity: 0; transform: scale(1); }
+  }
+
+  .teacher-wrap {
+    width: 100%;
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 20px 20px calc(34px + env(safe-area-inset-bottom));
+  }
+  .teacher-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .panel {
+    min-width: 0;
+    padding: 20px;
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 2px 0 #020509;
+  }
+  .section-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 58px;
+    margin: -20px -20px 16px;
+    padding: 11px 14px 12px;
+    background: #07101a;
+    border-bottom: 1px solid #223246;
+    box-shadow: inset 0 -1px 0 #020509;
+    text-align: left;
+  }
+  .section-heading h2 {
+    margin: 3px 0 0;
+    color: var(--ink);
+    font-size: clamp(1.05rem, 2vw, 1.28rem);
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.015em;
+    text-transform: none;
+  }
+  .board-key {
+    flex: none;
+    padding: 5px 7px;
+    color: var(--cyan);
+    background: #081521;
+    border: 1px solid #294258;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
   .qr-panel { text-align: center; }
-  #qr { margin: 10px auto; }
-  #qr img { width: 100%; max-width: 380px; height: auto; image-rendering: pixelated; border-radius: 12px; }
-  .url-big { font-size: 2.2rem; font-weight: 900; word-break: break-all; margin: 8px 0; }
-  .btn-pause { width: 100%; font-size: 1.4rem; font-weight: 900; padding: 18px; border: 0; border-radius: 18px; cursor: pointer; background: var(--sun); color: var(--ink); margin-top: 12px; }
-  .btn-pause.on { background: var(--ink); color: #fff; }
-  .btn-stop-big { width: 100%; font-size: 1.4rem; font-weight: 900; padding: 20px; border: 0; border-radius: 18px; cursor: pointer; background: var(--stop); color: #fff; margin-top: 12px; }
-  .fleet { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  @media (max-width: 500px) { .fleet { grid-template-columns: 1fr; } }
-  .fleet-card { border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; background: #f7fbff; }
-  .fleet-head { display: flex; align-items: center; gap: 8px; font-weight: 900; }
-  .fleet-head .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 2px var(--line); }
-  .fleet-sub { font-size: 0.9rem; font-weight: 700; color: #5b7890; margin: 4px 0 8px; min-height: 2.6em; }
-  .fleet-stop { width: 100%; border: 0; border-radius: 10px; background: var(--stop); color: #fff; font-weight: 800; padding: 8px; cursor: pointer; }
-  details { background: var(--card); border: 2px solid var(--line); border-radius: 16px; padding: 12px 16px; margin-top: 16px; }
-  summary { font-weight: 800; cursor: pointer; font-size: 1.05rem; }
-  details li { margin: 8px 0 8px 18px; line-height: 1.4; }
+  .qr-panel .section-heading { justify-content: center; text-align: center; }
+  .qr-frame {
+    position: relative;
+    width: min(100%, 390px);
+    margin: 0 auto 16px;
+    padding: 10px;
+    background: #050b12;
+    border: 1px solid #35475a;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 3px #09121d, 0 3px 0 #020407;
+  }
+  .qr-frame::before,
+  .qr-frame::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
+  }
+  .qr-frame::before {
+    top: 4px;
+    left: 4px;
+    border-top: 1px solid var(--cyan);
+    border-left: 1px solid var(--cyan);
+  }
+  .qr-frame::after {
+    right: 4px;
+    bottom: 4px;
+    border-right: 1px solid var(--cyan);
+    border-bottom: 1px solid var(--cyan);
+  }
+  #qr {
+    width: 100%;
+    margin: 0;
+    padding: 10px;
+    display: block;
+    background: #fff;
+    border-radius: 2px;
+  }
+  #qr:empty { aspect-ratio: 1; background: #dce5eb; }
+  #qr img {
+    display: block;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    border-radius: 0;
+    image-rendering: pixelated;
+  }
+  .manual-address {
+    padding: 11px 12px 12px;
+    text-align: left;
+    background: #07101a;
+    border: 1px solid #24364a;
+    border-radius: 4px;
+  }
+  .manual-label { display: block; margin-bottom: 6px; }
+  .url-big {
+    margin: 0;
+    color: var(--cyan);
+    font-family: var(--mono);
+    font-size: clamp(1rem, 2.4vw, 1.35rem);
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.015em;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .qr-note {
+    margin-top: 9px;
+    color: var(--muted);
+    font-size: 0.84rem;
+    line-height: 1.45;
+  }
+
+  .fleet { display: grid; gap: 9px; }
+  .fleet-card {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(105px, 0.8fr) minmax(194px, 1.7fr) 112px;
+    align-items: stretch;
+    gap: 10px;
+    padding: 11px;
+    background: #0b1623;
+    border: 1px solid #2a3b4e;
+    border-radius: 5px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.028), 0 1px 0 #020509;
+  }
+  .fleet-identity {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .fleet-identity .dot {
+    width: 17px;
+    height: 17px;
+    flex: none;
+    border: 2px solid #050b12;
+    border-radius: 50%;
+    background: var(--drone-colour);
+    box-shadow: 0 0 0 1px #526174;
+  }
+  .flight-reading { min-width: 0; display: grid; align-content: center; gap: 4px; }
+  .fleet-name,
+  .flight-value,
+  .battery-value {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.025em;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .fleet-name { color: var(--cyan); font-size: 0.88rem; }
+  .fleet-metrics {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(94px, 1fr) minmax(74px, 0.8fr);
+    gap: 7px 10px;
+  }
+  .fleet-status { grid-column: 1 / -1; }
+  .fleet-status .flight-value { color: #c5d3df; }
+  .fleet-card.is-paused .fleet-status .flight-value { color: #ffd27d; }
+  .battery-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .battery-gauge {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 2px;
+    width: 58px;
+    height: 10px;
+  }
+  .battery-gauge span {
+    min-width: 0;
+    background: #152335;
+    border: 1px solid #34475b;
+    border-radius: 1px;
+  }
+  .battery-gauge.battery-good span.filled { background: var(--go); border-color: var(--go); }
+  .battery-gauge.battery-mid span.filled { background: var(--amber); border-color: var(--amber); }
+  .battery-gauge.battery-low span.filled { background: var(--stop); border-color: var(--stop); }
+  .battery-value { flex: none; font-size: 0.72rem; }
+  .fleet-empty {
+    padding: 24px 16px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    letter-spacing: 0.08em;
+    text-align: center;
+    text-transform: uppercase;
+    background: #08121d;
+    border: 1px dashed #34475b;
+    border-radius: 5px;
+  }
+
+  .fleet-stop {
+    align-self: center;
+    width: 100%;
+    min-height: 50px;
+    padding: 7px 8px;
+    cursor: pointer;
+    color: #ffabb4;
+    background: #1a1118;
+    border: 1px solid #9d3947;
+    border-radius: 4px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 -2px 0 #080407, 0 3px 0 #090509;
+    font-family: var(--mono);
+    font-size: 0.69rem;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: 0.055em;
+  }
+  .fleet-stop:active {
+    transform: translateY(2px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), inset 0 -1px 0 #080407, 0 1px 0 #090509;
+  }
+
+  .class-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .guard-frame {
+    position: relative;
+    min-width: 0;
+    padding: 18px 7px 7px;
+    background: #070d14;
+    border: 1px solid #38495b;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 3px #0d1722, 0 2px 0 #020509;
+  }
+  .guard-frame::before {
+    content: "";
+    position: absolute;
+    top: 5px;
+    right: 7px;
+    left: 7px;
+    height: 4px;
+    border: 1px solid rgba(255, 178, 36, 0.42);
+    background: repeating-linear-gradient(135deg, #9a6711 0 7px, #241b0b 7px 14px);
+  }
+  .guard-frame.guard-red::before {
+    border-color: rgba(255, 77, 94, 0.48);
+    background: repeating-linear-gradient(135deg, #8b2331 0 7px, #250a0f 7px 14px);
+  }
+  .guard-label {
+    position: absolute;
+    z-index: 1;
+    top: 2px;
+    left: 50%;
+    padding: 0 5px;
+    color: #d1bf9a;
+    background: #070d14;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+  .guard-red .guard-label { color: #e9a5ad; }
+  .btn-pause,
+  .btn-stop-big {
+    width: 100%;
+    min-height: 68px;
+    margin: 0;
+    padding: 14px 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: clamp(0.88rem, 1.6vw, 1.03rem);
+    font-weight: 850;
+    line-height: 1.2;
+    letter-spacing: 0.065em;
+  }
+  .btn-pause {
+    color: #251800;
+    background: var(--amber);
+    border: 1px solid #ffd477;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.38), inset 0 -3px 0 #a66a00, 0 4px 0 #4a3000;
+  }
+  .btn-pause.on {
+    color: #032519;
+    background: var(--go);
+    border-color: #8fffd7;
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.4), inset 0 -3px 0 #0a976d, 0 4px 0 #064b36;
+  }
+  .btn-stop-big {
+    color: #fff;
+    background: #c6243a;
+    border: 1px solid var(--stop);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.24), inset 0 -3px 0 #6e1120, 0 4px 0 #390912;
+  }
+  .btn-pause:active,
+  .btn-stop-big:active {
+    transform: translateY(2px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.45), 0 1px 0 #020407;
+  }
+
+  details {
+    margin-top: 12px;
+    padding: 0 16px 12px;
+    color: var(--ink);
+    background: #08111b;
+    border: 1px solid #28394d;
+    border-radius: 6px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 1px 0 #020509;
+  }
+  summary {
+    min-height: 48px;
+    padding: 13px 0;
+    cursor: pointer;
+    color: #dbe6ef;
+    font-family: var(--mono);
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: 0.035em;
+  }
+  details[open] summary { border-bottom: 1px solid #223246; }
+  details ul { padding-top: 5px; }
+  details li {
+    margin: 9px 0 9px 18px;
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+  details b { color: var(--ink); }
+
+  @media (max-width: 980px) {
+    .teacher-grid { grid-template-columns: 1fr; }
+    .fleet-card { grid-template-columns: minmax(125px, 0.8fr) minmax(260px, 1.8fr) 126px; }
+  }
+  @media (max-width: 620px) {
+    .instrument-inner { padding-right: 12px; padding-left: 12px; gap: 12px; }
+    .teacher-wrap { padding: 12px 12px calc(28px + env(safe-area-inset-bottom)); }
+    .panel { padding: 14px; }
+    .section-heading { margin: -14px -14px 14px; }
+    .fleet-card { grid-template-columns: 1fr; gap: 11px; padding: 12px; }
+    .fleet-identity { padding-bottom: 9px; border-bottom: 1px solid #223246; }
+    .fleet-metrics { grid-template-columns: 1fr 1fr; }
+    .fleet-stop { min-height: 48px; }
+  }
+  @media (max-width: 520px) {
+    .instrument-inner { align-items: stretch; flex-direction: column; }
+    .brand { justify-content: center; }
+    .telemetry-cluster { width: 100%; margin: 0; }
+    .readout { width: 100%; min-width: 0; }
+    .section-heading { flex-direction: column; }
+    .qr-panel .section-heading { align-items: center; }
+    .class-controls { grid-template-columns: 1fr; }
+    .brand-name { white-space: normal; }
+  }
+  @media (max-width: 360px) {
+    .fleet-metrics { grid-template-columns: 1fr; }
+    .fleet-status { grid-column: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body.hub-online .status-dot::after { animation: none; }
+  }
 </style>
 </head>
 <body>
 
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <g id="quadMark" fill="none" stroke="#37d5f2" stroke-width="1.8" stroke-linecap="round">
+      <circle cx="5" cy="5" r="2.6"/><circle cx="19" cy="5" r="2.6"/>
+      <circle cx="5" cy="19" r="2.6"/><circle cx="19" cy="19" r="2.6"/>
+      <line x1="6.9" y1="6.9" x2="10.4" y2="10.4"/><line x1="17.1" y1="6.9" x2="13.6" y2="10.4"/>
+      <line x1="6.9" y1="17.1" x2="10.4" y2="13.6"/><line x1="17.1" y1="17.1" x2="13.6" y2="13.6"/>
+      <circle cx="12" cy="12" r="1.7"/>
+    </g>
+  </defs>
+</svg>
+
+<header class="instrument-header">
+  <div class="instrument-inner">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#quadMark"/></svg>
+      <div class="brand-copy">
+        <span class="brand-kicker">Drone Hub</span>
+        <span class="brand-name">TEACHER CONSOLE</span>
+      </div>
+    </div>
+    <div class="telemetry-cluster">
+      <div class="readout" aria-live="polite">
+        <span class="readout-label">HUB LINK / MODE</span>
+        <div class="readout-live-line">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="modeChip" class="readout-value">ACQUIRING&hellip;</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
 <div class="teacher-wrap">
-  <header style="padding:10px 0">
-    <div class="title">🍎 Teacher Screen</div>
-    <div class="chips"><span id="modeChip" class="chip">…</span></div>
-  </header>
 
   <div class="teacher-grid">
-    <section class="panel qr-panel">
-      <h2>Kids: point the iPad camera here 📸</h2>
-      <div id="qr"></div>
-      <div>…or type this into Safari:</div>
-      <div class="url-big" id="urlBig">…</div>
+    <section class="panel qr-panel" aria-labelledby="qrHeading">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">Pre-flight check-in</span>
+          <h2 id="qrHeading">SCAN TO FLY</h2>
+        </div>
+      </div>
+      <div class="qr-frame"><div id="qr"></div></div>
+      <div class="manual-address">
+        <span class="manual-label">Manual connection address</span>
+        <div class="url-big" id="urlBig">ACQUIRING…</div>
+      </div>
+      <p class="qr-note">If the camera does not open it, type the address into Safari.</p>
     </section>
 
-    <section class="panel">
-      <h2>Drones</h2>
+    <section class="panel" aria-labelledby="fleetHeading">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">Active aircraft</span>
+          <h2 id="fleetHeading">Fleet flight board</h2>
+        </div>
+        <span class="board-key">LIVE / 1 SEC</span>
+      </div>
       <div id="fleet" class="fleet"></div>
-      <button id="pauseBtn" class="btn-pause">⏸️ PAUSE THE CLASS</button>
-      <button id="stopBtn" class="btn-stop-big">🛑 STOP &amp; LAND ALL</button>
+      <div class="class-controls">
+        <div class="guard-frame guard-amber">
+          <span class="guard-label">Class hold</span>
+          <button id="pauseBtn" class="btn-pause" aria-pressed="false">PAUSE THE CLASS</button>
+        </div>
+        <div class="guard-frame guard-red">
+          <span class="guard-label">Emergency command</span>
+          <button id="stopBtn" class="btn-stop-big">STOP &amp; LAND ALL</button>
+        </div>
+      </div>
     </section>
   </div>
 
@@ -102,17 +662,43 @@ function drawQR(url) {
 function renderFleet(drones, isPaused) {
   const box = $("fleet");
   box.innerHTML = "";
+  if (!drones.length) {
+    box.innerHTML = '<div class="fleet-empty">No aircraft detected<br>Check controller connections</div>';
+    return;
+  }
   drones.forEach((d) => {
     const card = document.createElement("div");
-    card.className = "fleet-card";
-    const battery = d.battery < 0 ? "?" : d.battery + "%";
-    const doing = isPaused ? "⏸️ paused" : (d.current ? d.current.label : (d.flying ? "hovering" : "on the ground"));
+    card.className = "fleet-card" + (isPaused ? " is-paused" : "");
+    const knownBattery = d.battery >= 0;
+    const battery = knownBattery ? d.battery + "%" : "?";
+    const batteryCount = knownBattery ? Math.ceil(Math.max(0, Math.min(100, d.battery)) / 20) : 0;
+    const batteryClass = !knownBattery ? "battery-unknown"
+      : d.battery >= 50 ? "battery-good" : d.battery >= 30 ? "battery-mid" : "battery-low";
+    const batteryBars = Array.from({ length: 5 }, (_, i) =>
+      `<span${i < batteryCount ? ' class="filled"' : ""}></span>`).join("");
+    const doing = isPaused ? "paused" : (d.current ? d.current.label : (d.flying ? "hovering" : "on the ground"));
+    const colour = d.colour.map((v) => Math.max(0, Math.min(255, Number(v) || 0))).join(",");
+    const esc = (value) => String(value).replace(/[&<>"']/g, (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
     card.innerHTML =
-      `<div class="fleet-head"><span class="dot" style="background:rgb(${d.colour.join(",")})"></span>${d.name}</div>` +
-      `<div class="fleet-sub">🔋 ${battery} · 👤 ${d.pilot || "free"}<br>${doing}</div>`;
+      `<div class="fleet-identity fleet-head">` +
+        `<span class="dot" style="--drone-colour:rgb(${colour})" aria-hidden="true"></span>` +
+        `<div class="flight-reading"><span class="flight-label">Aircraft</span>` +
+          `<span class="fleet-name" title="${esc(d.name)}">${esc(d.name)}</span></div>` +
+      `</div>` +
+      `<div class="fleet-metrics fleet-sub">` +
+        `<div class="flight-reading"><span class="flight-label">Battery</span>` +
+          `<div class="battery-line"><span class="battery-gauge ${batteryClass}" role="img" aria-label="Battery ${battery}">${batteryBars}</span>` +
+          `<span class="battery-value">${battery}</span></div></div>` +
+        `<div class="flight-reading"><span class="flight-label">Pilot</span>` +
+          `<span class="flight-value" title="${esc(d.pilot || "Unassigned")}">${esc(d.pilot || "Unassigned")}</span></div>` +
+        `<div class="flight-reading fleet-status"><span class="flight-label">Flight status</span>` +
+          `<span class="flight-value" title="${esc(doing)}">${esc(doing)}</span></div>` +
+      `</div>`;
     const stop = document.createElement("button");
     stop.className = "fleet-stop";
-    stop.textContent = "🛑 Stop this one";
+    stop.textContent = "STOP THIS DRONE";
+    stop.setAttribute("aria-label", `Stop and land ${d.name}`);
     stop.addEventListener("click", () =>
       fetch("/api/stop", { method: "POST", headers: { "Content-Type": "application/json" },
                            body: JSON.stringify({ drone_id: d.id }) }));
@@ -124,16 +710,21 @@ function renderFleet(drones, isPaused) {
 async function poll() {
   try {
     const s = await (await fetch("/api/status")).json();
+    document.body.classList.add("hub-online");
+    document.body.classList.remove("hub-offline");
     drawQR(s.url);
-    $("modeChip").textContent = (s.mode === "practice" ? "🎮 Practice mode · " : "🚁 Real drones · ")
+    $("modeChip").textContent = (s.mode === "practice" ? "PRACTICE · " : "LIVE · ")
       + s.drones.length + " drone" + (s.drones.length === 1 ? "" : "s");
     renderFleet(s.drones, s.paused);
     paused = s.paused;
     const b = $("pauseBtn");
-    b.textContent = paused ? "▶️ LET THEM FLY AGAIN" : "⏸️ PAUSE THE CLASS";
+    b.textContent = paused ? "RESUME FLYING" : "PAUSE THE CLASS";
     b.classList.toggle("on", paused);
+    b.setAttribute("aria-pressed", paused);
   } catch (e) {
-    $("modeChip").textContent = "⛔ Hub not responding";
+    document.body.classList.add("hub-offline");
+    document.body.classList.remove("hub-online");
+    $("modeChip").textContent = "HUB NOT RESPONDING";
   }
   setTimeout(poll, 1000);
 }
