@@ -1,0 +1,2 @@
+# Only needed to fly the REAL drone. Practice Mode uses pure standard-library Python.
+codrone-edu

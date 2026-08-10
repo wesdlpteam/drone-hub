@@ -1,0 +1,4 @@
+drone_hub/.venv/
+__pycache__/
+*.pyc
+DroneHub.exe

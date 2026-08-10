@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Drone Pilot</title>
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Join overlay: name -->
+<div id="joinOverlay" class="overlay">
+  <div class="join-card">
+    <div class="join-emoji">🚁</div>
+    <h1>Drone Pilot</h1>
+    <p>Type your name!</p>
+    <input id="nameInput" type="text" maxlength="20" placeholder="Your name" aria-label="Your name" autocomplete="off">
+    <button id="joinBtn" class="btn-big btn-go">NEXT ➜</button>
+    <button id="watchBtn" class="btn-link">Just watch for now</button>
+  </div>
+</div>
+
+<!-- Drone picker overlay -->
+<div id="pickOverlay" class="overlay hidden">
+  <div class="join-card">
+    <div class="join-emoji">🎨</div>
+    <h1>Pick your drone</h1>
+    <div id="droneCards" class="drone-cards"></div>
+    <button id="pickBackBtn" class="btn-link">Back</button>
+  </div>
+</div>
+
+<!-- Motors-off confirm overlay -->
+<div id="emergencyOverlay" class="overlay hidden">
+  <div class="join-card">
+    <div class="join-emoji">⚠️</div>
+    <h1>Cut the motors?</h1>
+    <p>Your drone will DROP straight down. Only for real emergencies!</p>
+    <button id="confirmMotorsOff" class="btn-big btn-stop">YES — MOTORS OFF</button>
+    <button id="cancelMotorsOff" class="btn-link">Cancel</button>
+  </div>
+</div>
+
+<header>
+  <div class="title">🚁 Drone Pilot</div>
+  <div class="chips">
+    <span id="modeChip" class="chip">…</span>
+    <button id="droneChip" class="chip chip-drone">🎨 pick a drone</button>
+    <span id="batteryChip" class="chip">🔋 —</span>
+    <span id="pilotChip" class="chip">👤 nobody</span>
+  </div>
+</header>
+
+<div id="nowBar" class="now-bar hidden"></div>
+
+<nav class="tabs">
+  <button id="tabFly" class="tab active">🕹️ FLY</button>
+  <button id="tabCode" class="tab">🧩 CODE</button>
+</nav>
+
+<!-- ============ FLY ============ -->
+<main id="flyPage" class="page">
+  <div class="fly-grid">
+    <section class="panel">
+      <div class="row">
+        <button class="btn-big btn-go half" data-cmd="takeoff">🛫 TAKE OFF</button>
+        <button class="btn-big btn-land half" data-cmd="land">🛬 LAND</button>
+      </div>
+
+      <div class="pad">
+        <div></div>
+        <button class="btn-pad" data-move="forward">⬆️</button>
+        <div></div>
+        <button class="btn-pad" data-move="left">⬅️</button>
+        <div class="pad-center">🚁</div>
+        <button class="btn-pad" data-move="right">➡️</button>
+        <div></div>
+        <button class="btn-pad" data-move="back">⬇️</button>
+        <div></div>
+      </div>
+
+      <div class="row">
+        <button class="btn-mid" data-turn="turn_left">↩️ Turn</button>
+        <button class="btn-mid" data-move="up">🔼 Up</button>
+        <button class="btn-mid" data-move="down">🔽 Down</button>
+        <button class="btn-mid" data-turn="turn_right">↪️ Turn</button>
+      </div>
+
+      <div class="row settings">
+        <div class="setting">
+          <label>Distance</label>
+          <div class="chips-row" id="distChips">
+            <button class="chip-btn" data-dist="30">30</button>
+            <button class="chip-btn active" data-dist="50">50</button>
+            <button class="chip-btn" data-dist="100">100</button>
+          </div>
+          <small>centimetres</small>
+        </div>
+        <div class="setting">
+          <label>Turn</label>
+          <div class="chips-row" id="turnChips">
+            <button class="chip-btn active" data-deg="90">90°</button>
+            <button class="chip-btn" data-deg="180">180°</button>
+          </div>
+          <small>degrees</small>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn-mid" data-cmd="flip">🤸 Flip!</button>
+        <div class="leds" id="ledRow">
+          <button class="led" style="background:#ff5964" data-led="255,89,100"></button>
+          <button class="led" style="background:#ffd166" data-led="255,209,102"></button>
+          <button class="led" style="background:#06d6a0" data-led="6,214,160"></button>
+          <button class="led" style="background:#4cc9f0" data-led="76,201,240"></button>
+          <button class="led" style="background:#b388ff" data-led="179,136,255"></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="mapPanel">
+      <h2>Practice sky 🌤️</h2>
+      <canvas id="map" width="560" height="560"></canvas>
+      <div class="alt-row">
+        <span>Height:</span>
+        <div class="alt-track"><div id="altFill" class="alt-fill"></div></div>
+        <span id="altLabel">0 cm</span>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- ============ CODE ============ -->
+<main id="codePage" class="page hidden">
+  <div class="level-bar">
+    <span class="level-label">Level</span>
+    <button class="level-btn" data-level="1">1 🐣</button>
+    <button class="level-btn" data-level="2">2 🐥</button>
+    <button class="level-btn" data-level="3">3 🦉</button>
+    <button class="level-btn" data-level="4">4 🚀</button>
+    <button class="level-btn" data-level="5">5 🧑‍💻</button>
+  </div>
+
+  <div class="fly-grid">
+    <section class="panel">
+      <h2>Tap blocks to build your program</h2>
+      <div class="palette" id="palette">
+        <button class="block b-go" data-block="takeoff" data-min-level="1">🛫<span class="bw"> Take off</span></button>
+        <button class="block b-move" data-block="forward" data-min-level="1">⬆️<span class="bw"> Forward</span></button>
+        <button class="block b-move" data-block="back" data-min-level="1">⬇️<span class="bw"> Backward</span></button>
+        <button class="block b-turn" data-block="turn_left" data-min-level="1">↩️<span class="bw"> Turn left</span></button>
+        <button class="block b-turn" data-block="turn_right" data-min-level="1">↪️<span class="bw"> Turn right</span></button>
+        <button class="block b-fun" data-block="flip" data-min-level="1">🤸<span class="bw"> Flip</span></button>
+        <button class="block b-fun" data-block="led" data-min-level="1">🌈<span class="bw"> Light</span></button>
+        <button class="block b-land" data-block="land" data-min-level="1">🛬<span class="bw"> Land</span></button>
+        <button class="block b-move" data-block="left" data-min-level="2">⬅️<span class="bw"> Slide left</span></button>
+        <button class="block b-move" data-block="right" data-min-level="2">➡️<span class="bw"> Slide right</span></button>
+        <button class="block b-move" data-block="up" data-min-level="2">🔼<span class="bw"> Up</span></button>
+        <button class="block b-move" data-block="down" data-min-level="2">🔽<span class="bw"> Down</span></button>
+        <button class="block b-fun" data-block="hover" data-min-level="2">⏱️<span class="bw"> Wait</span></button>
+        <button class="block b-repeat" data-block="repeat_start" data-min-level="4">🔁<span class="bw"> Repeat</span></button>
+        <button class="block b-repeat" data-block="repeat_end" data-min-level="4">🏁<span class="bw"> End repeat</span></button>
+      </div>
+
+      <div class="row settings" id="codeSettings" data-min-level="3">
+        <div class="setting">
+          <label>Distance</label>
+          <div class="chips-row" id="codeDistChips">
+            <button class="chip-btn" data-dist="30">30</button>
+            <button class="chip-btn active" data-dist="50">50</button>
+            <button class="chip-btn" data-dist="100">100</button>
+          </div>
+        </div>
+        <div class="setting">
+          <label>Turn</label>
+          <div class="chips-row" id="codeTurnChips">
+            <button class="chip-btn active" data-deg="90">90°</button>
+            <button class="chip-btn" data-deg="180">180°</button>
+          </div>
+        </div>
+        <div class="setting" id="repeatSetting" data-min-level="4">
+          <label>Repeat</label>
+          <div class="chips-row" id="repeatChips">
+            <button class="chip-btn active" data-rep="2">×2</button>
+            <button class="chip-btn" data-rep="3">×3</button>
+            <button class="chip-btn" data-rep="5">×5</button>
+          </div>
+        </div>
+      </div>
+      <p class="hint" id="levelHint"></p>
+    </section>
+
+    <section class="panel">
+      <h2>My program</h2>
+      <ol id="programList" class="program"></ol>
+      <p id="programEmpty" class="hint">No blocks yet. Tap some blocks to start!</p>
+      <div class="row">
+        <button id="runBtn" class="btn-big btn-go half">▶️ RUN</button>
+        <button id="clearBtn" class="btn-mid half">🗑️ Clear</button>
+      </div>
+      <div id="pythonPanel" class="python-panel hidden">
+        <h2>🧑‍💻 The real Python code</h2>
+        <pre id="pythonCode"></pre>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <button id="stopBtn" class="btn-stop-bar">🛑 STOP &amp; LAND</button>
+  <button id="motorsOffBtn" class="btn-motors">motors off</button>
+</footer>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone Hub — fly CoDrone EDU from iPads</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: #eaf6ff; color: #17324d; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .card {
+    background: #fff; border-radius: 24px; padding: 40px 36px; max-width: 640px;
+    text-align: center; border: 2px solid #d7e8f5;
+  }
+  .emoji { font-size: 4rem; }
+  h1 { font-size: 2rem; margin: 10px 0 6px; }
+  .sub { color: #5b7890; font-size: 1.1rem; margin-bottom: 26px; }
+  .btn {
+    display: inline-block; background: #06d6a0; color: #063; text-decoration: none;
+    font-size: 1.35rem; font-weight: 800; padding: 18px 34px; border-radius: 18px;
+  }
+  .btn:hover { filter: brightness(1.05); }
+  ol { text-align: left; margin: 26px auto 0; max-width: 440px; line-height: 1.6; }
+  ol li { margin: 10px 0; }
+  .note { margin-top: 22px; font-size: 0.95rem; color: #5b7890; line-height: 1.5; }
+  a.plain { color: #2f80ed; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="emoji">🚁</div>
+    <h1>Drone Hub</h1>
+    <p class="sub">Fly CoDrone EDU drones from iPads. No apps, no cables on the iPads.</p>
+    <a class="btn" href="https://github.com/wesdlpteam/drone-hub/releases/latest/download/DroneHub.exe">⬇️ Get Drone Hub for Windows</a>
+    <ol>
+      <li>Run <b>DroneHub.exe</b> on the laptop the drone controllers plug into.
+          (First time, Windows may ask: choose <b>More info → Run anyway</b>, and
+          <b>Allow</b> network access.)</li>
+      <li>The Teacher Screen opens with a giant QR code.</li>
+      <li>Kids point their iPad cameras at it and fly. That's it!</li>
+    </ol>
+    <p class="note">
+      No drones plugged in? It runs Practice Mode with six virtual drones, great for
+      coding lessons with zero hardware. Includes 5 coding levels, from picture blocks
+      for pre-readers up to real Python.<br><br>
+      Free and open source: <a class="plain" href="https://github.com/wesdlpteam/drone-hub">view the code on GitHub</a>.
+      Made by the Wesley College Digital Learning &amp; Practice team.
+    </p>
+  </div>
+</body>
+</html>
