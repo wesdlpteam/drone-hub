@@ -1,5 +1,9 @@
 # Drone Pilot — fly CoDrone EDU from iPads
 
+**Easiest way to get it:** https://wesdlpteam.github.io/drone-hub/ — download,
+extract, double-click **Drone Hub**. Everything below also works from this folder
+directly. IT deployment notes are in [FOR-IT.md](FOR-IT.md).
+
 The CoDrone EDU drones normally need a laptop with the controller plugged in by USB,
 which the primary school's iPads can't do. This app fixes that with a simple idea:
 
