@@ -233,6 +233,98 @@
     return lines;
   }
 
+  const OLD_DEF_TO_TYPE = {
+    takeoff: "drone_takeoff", land: "drone_land", forward: "drone_forward",
+    back: "drone_back", left: "drone_left", right: "drone_right",
+    up: "drone_up", down: "drone_down", turn_left: "drone_turn_left",
+    turn_right: "drone_turn_right", go_power: "drone_go_power",
+    led_red: "drone_led", led_green: "drone_led", led_blue: "drone_led",
+    led_yellow: "drone_led", led_purple: "drone_led", led_off: "drone_led_off",
+    ping: "drone_ping", buzzer: "drone_buzzer", sound_sequence: "drone_sound_sequence",
+    hover: "drone_hover", avoid_wall: "drone_avoid_wall", if_wall: "drone_if_wall",
+    if_height: "drone_if_height", flip_front: "drone_flip", flip_back: "drone_flip",
+    flip_left: "drone_flip", flip_right: "drone_flip", square: "drone_square",
+    triangle: "drone_triangle", circle: "drone_circle", sway: "drone_sway",
+  };
+
+  function nearestLedColour(rgb) {
+    if (!Array.isArray(rgb) || rgb.length !== 3) return "red";
+    let best = "red", bestDist = Infinity;
+    for (const [name, ref] of Object.entries(LED_COLOURS)) {
+      const d = (ref[0] - rgb[0]) ** 2 + (ref[1] - rgb[1]) ** 2 + (ref[2] - rgb[2]) ** 2;
+      if (d < bestDist) { bestDist = d; best = name; }
+    }
+    return best;
+  }
+
+  function migratedFields(type, step) {
+    const v = step.value;
+    const obj = (x) => (x && typeof x === "object" ? x : {});
+    switch (type) {
+      case "drone_forward": case "drone_back": case "drone_left": case "drone_right":
+      case "drone_up": case "drone_down": return { VALUE: clampNum(v, 20, 150, 50) };
+      case "drone_turn_left": case "drone_turn_right": return { VALUE: clampNum(v, 45, 180, 90) };
+      case "drone_hover": return { VALUE: clampNum(v, 1, 5, 2) };
+      case "drone_flip": return { DIR: ["front", "back", "left", "right"].includes(v) ? v : "back" };
+      case "drone_led": return { COLOUR: nearestLedColour(v) };
+      case "drone_buzzer": return { NOTE: String(clampNum(obj(v).frequency, 200, 1200, 523)), DUR: clampNum(obj(v).duration, 100, 2000, 500) };
+      case "drone_sound_sequence": return { KIND: ["success", "warning", "error"].includes(v) ? v : "success" };
+      case "drone_square": case "drone_triangle": case "drone_circle": case "drone_sway":
+        return { DIR: obj(v).direction === "left" ? "left" : "right" };
+      case "drone_avoid_wall": return { DIST: clampNum(obj(v).distance, 20, 100, 50), TIMEOUT: clampNum(obj(v).timeout, 2, 10, 5) };
+      case "drone_if_wall": return { DIST: clampNum(obj(v).distance, 20, 100, 50),
+        REACT: ["turn_left", "turn_right", "hover", "land"].includes(obj(v).reaction) ? obj(v).reaction : "turn_right" };
+      case "drone_if_height": return { COMP: obj(v).comparison === "below" ? "below" : "above",
+        HEIGHT: clampNum(obj(v).height, 30, 150, 120),
+        REACT: ["land", "hover", "up", "down"].includes(obj(v).reaction) ? obj(v).reaction : "land" };
+      case "drone_go_power": return {
+        DIR: ["forward", "backward", "left", "right", "up", "down"].includes(obj(v).direction) ? obj(v).direction : "forward",
+        POWER: clampNum(obj(v).power, 20, 70, 40), DUR: clampNum(obj(v).duration, 0.5, 3, 1) };
+      default: return {};
+    }
+  }
+
+  function migrateOldProgram(oldSteps) {
+    if (!Array.isArray(oldSteps) || !oldSteps.length) return null;
+    // First pass: nested lists; repeat_start opens a body, repeat_end closes it.
+    const rootList = [];
+    const stack = [rootList];
+    for (const step of oldSteps) {
+      if (!step || typeof step !== "object") continue;
+      if (step.defId === "repeat_start") {
+        const node = { repeat: true, times: clampNum(step.value, 2, 5, 2), body: [] };
+        stack[stack.length - 1].push(node);
+        stack.push(node.body);
+        continue;
+      }
+      if (step.defId === "repeat_end") {
+        if (stack.length > 1) stack.pop();
+        continue;
+      }
+      const type = OLD_DEF_TO_TYPE[step.defId];
+      if (!type) continue;
+      stack[stack.length - 1].push({ type, fields: migratedFields(type, step) });
+    }
+    const toChain = (list) => {
+      let head = null, tail = null;
+      for (const item of list) {
+        const block = item.repeat
+          ? Object.assign({ type: "drone_repeat", fields: { TIMES: item.times } },
+              item.body.length ? { inputs: { DO: { block: toChain(item.body) } } } : {})
+          : { type: item.type, fields: item.fields };
+        if (!head) head = block;
+        else tail.next = { block };
+        tail = block;
+      }
+      return head;
+    };
+    const root = toChain(rootList);
+    if (!root) return null;
+    root.x = 24;
+    root.y = 24;
+    return { blocks: { languageVersion: 0, blocks: [root] } };
+  }
+
   return { CATEGORIES, LED_COLOURS, BLOCKS, BLOCK_BY_TYPE, toolboxForLevel, stepValue, clampNum,
-    stepsFromScript, pythonLines };
+    stepsFromScript, pythonLines, migrateOldProgram };
 });
