@@ -153,5 +153,86 @@
     }
   }
 
-  return { CATEGORIES, LED_COLOURS, BLOCKS, BLOCK_BY_TYPE, toolboxForLevel, stepValue, clampNum };
+  function stepsFromScript(script) {
+    const steps = [], blockIds = [];
+    const walk = (nodes) => {
+      for (const node of nodes) {
+        if (steps.length > 30) return;
+        if (node.action === "repeat") {
+          const times = clampNum(node.times, 2, 5, 2);
+          for (let i = 0; i < times && steps.length <= 30; i++) walk(node.body);
+        } else {
+          steps.push({ action: node.action, value: node.value });
+          blockIds.push(node.id);
+        }
+      }
+    };
+    walk(script);
+    if (!steps.length) return { error: "Add some blocks first!" };
+    if (steps.length > 30) return { error: "That becomes more than 30 steps after repeating." };
+    return { steps, blockIds };
+  }
+
+  function reactionPython(reaction, value) {
+    if (reaction === "land") return "drone.land()";
+    if (reaction === "hover") return `drone.hover(${value || 2})`;
+    if (reaction === "turn_left") return `drone.turn_left(${value || 90})`;
+    if (reaction === "turn_right") return `drone.turn_right(${value || 90})`;
+    if (reaction === "up" || reaction === "down") return `drone.go("${reaction}", 40, 1)`;
+    return "pass";
+  }
+
+  function pythonFor(action, value) {
+    switch (action) {
+      case "takeoff": return ["drone.takeoff()"];
+      case "land": return ["drone.land()"];
+      case "forward": return [`drone.move_forward(${value}, "cm")`];
+      case "back": return [`drone.move_backward(${value}, "cm")`];
+      case "left": return [`drone.move_left(${value}, "cm")`];
+      case "right": return [`drone.move_right(${value}, "cm")`];
+      case "up": return [`drone.go("up", 40, ${Math.max(0.5, value / 50).toFixed(1)})`];
+      case "down": return [`drone.go("down", 40, ${Math.max(0.5, value / 50).toFixed(1)})`];
+      case "turn_left": return [`drone.turn_left(${value})`];
+      case "turn_right": return [`drone.turn_right(${value})`];
+      case "hover": return [`drone.hover(${value})`];
+      case "flip": return [`drone.flip("${value}")`];
+      case "led": return [`drone.set_drone_LED(${value.join(", ")}, 100)`];
+      case "led_off": return ["drone.drone_LED_off()"];
+      case "ping": return ["drone.ping()"];
+      case "buzzer": return [`drone.drone_buzzer(${value.frequency}, ${value.duration})`];
+      case "sound_sequence": return [`drone.drone_buzzer_sequence("${value}")`];
+      case "circle": return [`drone.circle(${value.speed}, ${value.direction === "right" ? 1 : -1})`];
+      case "square": case "triangle": case "sway":
+        return [`drone.${action}(${value.speed}, ${value.duration}, ${value.direction === "right" ? 1 : -1})`];
+      case "avoid_wall": return [`drone.avoid_wall(timeout=${value.timeout}, distance=${value.distance})`];
+      case "go_power": return [`drone.go("${value.direction}", ${value.power}, ${value.duration})`];
+      case "if_wall": return [`if drone.detect_wall(${value.distance}):`, `    ${reactionPython(value.reaction, value.reaction_value)}`];
+      case "if_height": {
+        const symbol = value.comparison === "above" ? ">" : "<";
+        return [`if drone.get_height("cm") ${symbol} ${value.height}:`, `    ${reactionPython(value.reaction, value.reaction_value)}`];
+      }
+      default: return [];
+    }
+  }
+
+  function pythonLines(script) {
+    const lines = ["from codrone_edu.drone import Drone", "", "drone = Drone()", "drone.pair()"];
+    const emit = (nodes, indent) => {
+      for (const node of nodes) {
+        if (node.action === "repeat") {
+          lines.push(`${indent}for _ in range(${clampNum(node.times, 2, 5, 2)}):`);
+          if (node.body.length) emit(node.body, indent + "    ");
+          else lines.push(`${indent}    pass`);
+        } else {
+          pythonFor(node.action, node.value).forEach((line) => lines.push(indent + line));
+        }
+      }
+    };
+    emit(script, "");
+    lines.push("drone.close()");
+    return lines;
+  }
+
+  return { CATEGORIES, LED_COLOURS, BLOCKS, BLOCK_BY_TYPE, toolboxForLevel, stepValue, clampNum,
+    stepsFromScript, pythonLines };
 });
