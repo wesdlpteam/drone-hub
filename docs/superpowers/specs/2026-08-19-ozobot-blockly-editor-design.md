@@ -104,6 +104,19 @@ narrower-than-tall get the same cover only in the CODE tab.
 - Hub offline: existing banner + control locking behaviour retained; editing and
   saving still work.
 
+## Addendum (2026-08-19, during build)
+
+Nathan asked mid-build to match the blocks to Robolink's official CoDrone EDU
+Blockly (codrone.robolink.com/edu/blockly). Implemented: one `go [direction] N cm`
+block and one `turn [left/right] N degrees` block with dropdowns (replacing eight
+separate move/turn blocks), and official wording ("hover for N second(s)",
+"play this note X for N ms", "avoid wall at N cm for N second(s)",
+"set LED color to X", plain "take off"/"land", "[right] circle/triangle/square",
+plain "sway"). All safety caps unchanged. Level 1 now includes all six go
+directions via the dropdown (still clamped 20-150 cm). Official-only features
+(coordinates, variables, functions, events, controller/console blocks) remain out
+of scope — the Hub's validated step model doesn't support them.
+
 ## Out of scope
 
 FLY tab, Teacher Screen, server API, bat launchers, packaging/download page. Any
