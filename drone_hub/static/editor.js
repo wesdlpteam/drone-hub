@@ -6,11 +6,11 @@
 const EDITOR_STORAGE_KEY = "dronePilotBlocklyV1";
 const OLD_PROGRAM_KEY = "dronePilotProgramV1";
 const EDITOR_LEVEL_HINTS = {
-  1: "Picture blocks use safe ready-made settings. Great for a first flight.",
-  2: "Add slides, sound, timing, loops, flips and movement in every direction.",
-  3: "Tune distances, angles, colours, notes and flight patterns.",
+  1: "Take off, go, turn and set the lights — everything for a first flight.",
+  2: "Add sound, timing, loops and flips.",
+  3: "Add notes, sounds and flight patterns like circles and squares.",
   4: "Use the front and bottom range sensors to react to the world.",
-  5: "Add power-based flight controls and see the real Python your blocks create.",
+  5: "Add power flying and see the real Python your blocks create.",
 };
 
 let editorLevel = Math.max(1, Math.min(5, parseInt(localStorage.getItem("codeLevel") || "1", 10) || 1));
@@ -70,8 +70,8 @@ function walkChain(block, out) {
             if (field.name) fields[field.name] = field.getValue();
           }
         }
-        out.push({ id: current.id, action: meta.action,
-          value: DroneBlocksData.stepValue(current.type, fields) });
+        const step = DroneBlocksData.stepFor(current.type, fields);
+        if (step) out.push({ id: current.id, action: step.action, value: step.value });
       }
     }
     current = current.getNextBlock();

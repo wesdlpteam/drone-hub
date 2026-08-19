@@ -21,10 +21,20 @@ test("maps simple steps to a linked chain", () => {
   ]);
   const blocks = chain(state.blocks.blocks[0]);
   assert.deepEqual(blocks.map((b) => b.type),
-    ["drone_takeoff", "drone_forward", "drone_flip", "drone_led", "drone_land"]);
-  assert.equal(blocks[1].fields.VALUE, 80);
+    ["drone_takeoff", "drone_go", "drone_flip", "drone_led", "drone_land"]);
+  assert.deepEqual(blocks[1].fields, { DIR: "forward", VALUE: 80 });
   assert.equal(blocks[2].fields.DIR, "left");
   assert.equal(blocks[3].fields.COLOUR, "green");
+});
+
+test("old backward and turn steps keep their direction", () => {
+  const state = data.migrateOldProgram([
+    { defId: "back", action: "back", value: 40 },
+    { defId: "turn_left", action: "turn_left", value: 120 },
+  ]);
+  const blocks = chain(state.blocks.blocks[0]);
+  assert.deepEqual(blocks[0].fields, { DIR: "backward", VALUE: 40 });
+  assert.deepEqual(blocks[1].fields, { DIR: "left", VALUE: 120 });
 });
 
 test("repeat pairs become one repeat block with a body", () => {
@@ -39,7 +49,7 @@ test("repeat pairs become one repeat block with a body", () => {
   assert.deepEqual(blocks.map((b) => b.type), ["drone_repeat", "drone_land"]);
   assert.equal(blocks[0].fields.TIMES, 3);
   const body = chain(blocks[0].inputs.DO.block);
-  assert.deepEqual(body.map((b) => b.type), ["drone_forward", "drone_hover"]);
+  assert.deepEqual(body.map((b) => b.type), ["drone_go", "drone_hover"]);
 });
 
 test("odd colours snap to the nearest named colour", () => {

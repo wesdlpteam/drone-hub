@@ -223,7 +223,7 @@ function showTab(fly, remember = true) {
   $("codePage").classList.toggle("hidden", fly);
   if (remember) localStorage.setItem(APP_TAB_KEY, fly ? "fly" : "code");
   document.body.classList.toggle("code-tab-active", !fly);
-  if (!fly && window.DroneEditor) DroneEditor.refreshLayout();
+  if (window.DroneEditor) DroneEditor.refreshLayout();
   syncRadarLoop();
 }
 $("tabFly").addEventListener("click", () => showTab(true));

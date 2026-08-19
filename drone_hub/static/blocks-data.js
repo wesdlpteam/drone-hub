@@ -34,48 +34,46 @@
   const num = (name, value, min, max, precision) => ({ type: "field_number", name, value, min, max, precision });
   const drop = (name, options) => ({ type: "field_dropdown", name, options });
 
-  const DIST = (label) => stmt({ message0: `${label} %1 cm`, args0: [num("VALUE", 50, 20, 150, 1)] });
-  const TURN = (label) => stmt({ message0: `${label} %1°`, args0: [num("VALUE", 90, 45, 180, 1)] });
-  const PATTERN = (label) => stmt({ message0: `${label} %1`, args0: [drop("DIR", [["clockwise", "right"], ["counter-clockwise", "left"]])] });
+  const PATTERN = (label) => stmt({ message0: `%1 ${label}`, args0: [drop("DIR", [["right", "right"], ["left", "left"]])] });
 
   const BLOCKS = [
     { type: "drone_takeoff", action: "takeoff", category: "flight", minLevel: 1,
-      json: stmt({ message0: "↑ take off" }) },
+      json: stmt({ message0: "take off" }) },
     { type: "drone_land", action: "land", category: "flight", minLevel: 1,
-      json: stmt({ message0: "↓ land safely" }) },
-    { type: "drone_forward", action: "forward", category: "movement", minLevel: 1, json: DIST("fly forward") },
-    { type: "drone_back", action: "back", category: "movement", minLevel: 1, json: DIST("fly backward") },
-    { type: "drone_turn_left", action: "turn_left", category: "movement", minLevel: 1, json: TURN("↶ turn left") },
-    { type: "drone_turn_right", action: "turn_right", category: "movement", minLevel: 1, json: TURN("turn right ↷") },
-    { type: "drone_left", action: "left", category: "movement", minLevel: 2, json: DIST("slide left") },
-    { type: "drone_right", action: "right", category: "movement", minLevel: 2, json: DIST("slide right") },
-    { type: "drone_up", action: "up", category: "movement", minLevel: 2, json: DIST("fly up") },
-    { type: "drone_down", action: "down", category: "movement", minLevel: 2, json: DIST("fly down") },
-    { type: "drone_go_power", action: "go_power", category: "movement", minLevel: 5,
-      json: stmt({ message0: "power move %1 at %2 %% for %3 s", args0: [
+      json: stmt({ message0: "land" }) },
+    { type: "drone_go", action: "go", category: "movement", minLevel: 1,
+      json: stmt({ message0: "go %1 %2 cm", args0: [
         drop("DIR", [["forward", "forward"], ["backward", "backward"], ["left", "left"], ["right", "right"], ["up", "up"], ["down", "down"]]),
-        num("POWER", 40, 20, 70, 5), num("DUR", 1, 0.5, 3, 0.5)] }) },
+        num("VALUE", 50, 20, 150, 1)] }) },
+    { type: "drone_turn", action: "turn", category: "movement", minLevel: 1,
+      json: stmt({ message0: "turn %1 %2 degrees", args0: [
+        drop("DIR", [["left", "left"], ["right", "right"]]),
+        num("VALUE", 90, 45, 180, 1)] }) },
+    { type: "drone_go_power", action: "go_power", category: "movement", minLevel: 5,
+      json: stmt({ message0: "go %1 for %2 second(s) at %3 %% power", args0: [
+        drop("DIR", [["forward", "forward"], ["backward", "backward"], ["left", "left"], ["right", "right"], ["up", "up"], ["down", "down"]]),
+        num("DUR", 1, 0.5, 3, 0.5), num("POWER", 40, 20, 70, 5)] }) },
     { type: "drone_led", action: "led", category: "lights", minLevel: 1,
-      json: stmt({ message0: "light colour %1", args0: [drop("COLOUR",
+      json: stmt({ message0: "set LED color to %1", args0: [drop("COLOUR",
         Object.keys(LED_COLOURS).map((name) => [name, name]))] }) },
     { type: "drone_led_off", action: "led_off", category: "lights", minLevel: 2,
-      json: stmt({ message0: "light off" }) },
+      json: stmt({ message0: "turn LED off" }) },
     { type: "drone_ping", action: "ping", category: "sound", minLevel: 2,
-      json: stmt({ message0: "♪ beep and blink" }) },
+      json: stmt({ message0: "beep and blink" }) },
     { type: "drone_buzzer", action: "buzzer", category: "sound", minLevel: 3,
-      json: stmt({ message0: "play note %1 for %2 ms", args0: [
+      json: stmt({ message0: "play this note %1 for %2 ms", args0: [
         drop("NOTE", [["C4", "262"], ["E4", "330"], ["G4", "392"], ["C5", "523"], ["E5", "659"], ["G5", "784"]]),
         num("DUR", 500, 100, 2000, 100)] }) },
     { type: "drone_sound_sequence", action: "sound_sequence", category: "sound", minLevel: 3,
       json: stmt({ message0: "play sound %1", args0: [drop("KIND", [["success", "success"], ["warning", "warning"], ["error", "error"]])] }) },
     { type: "drone_hover", action: "hover", category: "timing", minLevel: 2,
-      json: stmt({ message0: "wait and hover %1 s", args0: [num("VALUE", 2, 1, 5, 1)] }) },
+      json: stmt({ message0: "hover for %1 second(s)", args0: [num("VALUE", 2, 1, 5, 1)] }) },
     { type: "drone_repeat", action: "repeat", category: "loops", minLevel: 2,
       json: { message0: "repeat %1 times", args0: [num("TIMES", 2, 2, 5, 1)],
         message1: "%1", args1: [{ type: "input_statement", name: "DO" }],
         previousStatement: null, nextStatement: null } },
     { type: "drone_avoid_wall", action: "avoid_wall", category: "sensors", minLevel: 4,
-      json: stmt({ message0: "fly until obstacle at %1 cm, give up after %2 s", args0: [
+      json: stmt({ message0: "avoid wall at %1 cm for %2 second(s)", args0: [
         num("DIST", 50, 20, 100, 10), num("TIMEOUT", 5, 2, 10, 1)] }) },
     { type: "drone_if_wall", action: "if_wall", category: "logic", minLevel: 4,
       json: stmt({ message0: "if obstacle closer than %1 cm then %2", args0: [
@@ -88,10 +86,11 @@
         drop("REACT", [["land", "land"], ["hover", "hover"], ["fly up", "up"], ["fly down", "down"]])] }) },
     { type: "drone_flip", action: "flip", category: "tricks", minLevel: 2,
       json: stmt({ message0: "flip %1", args0: [drop("DIR", [["front", "front"], ["back", "back"], ["left", "left"], ["right", "right"]])] }) },
-    { type: "drone_square", action: "square", category: "tricks", minLevel: 3, json: PATTERN("fly a square") },
-    { type: "drone_triangle", action: "triangle", category: "tricks", minLevel: 3, json: PATTERN("fly a triangle") },
-    { type: "drone_circle", action: "circle", category: "tricks", minLevel: 3, json: PATTERN("fly a circle") },
-    { type: "drone_sway", action: "sway", category: "tricks", minLevel: 3, json: PATTERN("sway side to side") },
+    { type: "drone_square", action: "square", category: "tricks", minLevel: 3, json: PATTERN("square") },
+    { type: "drone_triangle", action: "triangle", category: "tricks", minLevel: 3, json: PATTERN("triangle") },
+    { type: "drone_circle", action: "circle", category: "tricks", minLevel: 3, json: PATTERN("circle") },
+    { type: "drone_sway", action: "sway", category: "tricks", minLevel: 3,
+      json: stmt({ message0: "sway" }) },
   ];
   BLOCKS.forEach((b) => { b.json.type = b.type; b.json.style = `cat_${b.category}`; b.json.tooltip = ""; });
 
@@ -111,43 +110,47 @@
     return { kind: "categoryToolbox", contents };
   }
 
-  function stepValue(type, fields) {
+  function stepFor(type, fields) {
+    const meta = BLOCK_BY_TYPE[type];
+    if (!meta) return null;
     switch (type) {
       case "drone_takeoff": case "drone_land": case "drone_led_off": case "drone_ping":
-        return null;
-      case "drone_forward": case "drone_back": case "drone_left": case "drone_right":
-      case "drone_up": case "drone_down":
-        return clampNum(fields.VALUE, 20, 150, 50);
-      case "drone_turn_left": case "drone_turn_right":
-        return clampNum(fields.VALUE, 45, 180, 90);
+        return { action: meta.action, value: null };
+      case "drone_go": {
+        const dir = ["forward", "backward", "left", "right", "up", "down"].includes(fields.DIR) ? fields.DIR : "forward";
+        return { action: dir === "backward" ? "back" : dir, value: clampNum(fields.VALUE, 20, 150, 50) };
+      }
+      case "drone_turn":
+        return { action: fields.DIR === "left" ? "turn_left" : "turn_right",
+          value: clampNum(fields.VALUE, 45, 180, 90) };
       case "drone_hover":
-        return clampNum(fields.VALUE, 1, 5, 2);
+        return { action: "hover", value: clampNum(fields.VALUE, 1, 5, 2) };
       case "drone_flip":
-        return ["front", "back", "left", "right"].includes(fields.DIR) ? fields.DIR : "back";
+        return { action: "flip", value: ["front", "back", "left", "right"].includes(fields.DIR) ? fields.DIR : "back" };
       case "drone_led":
-        return [...(LED_COLOURS[fields.COLOUR] || LED_COLOURS.red)];
+        return { action: "led", value: [...(LED_COLOURS[fields.COLOUR] || LED_COLOURS.red)] };
       case "drone_buzzer":
-        return { frequency: clampNum(fields.NOTE, 200, 1200, 523), duration: clampNum(fields.DUR, 100, 2000, 500) };
+        return { action: "buzzer", value: { frequency: clampNum(fields.NOTE, 200, 1200, 523), duration: clampNum(fields.DUR, 100, 2000, 500) } };
       case "drone_sound_sequence":
-        return ["success", "warning", "error"].includes(fields.KIND) ? fields.KIND : "success";
+        return { action: "sound_sequence", value: ["success", "warning", "error"].includes(fields.KIND) ? fields.KIND : "success" };
       case "drone_square": case "drone_triangle": case "drone_circle": case "drone_sway":
-        return { direction: fields.DIR === "left" ? "left" : "right", speed: 40, duration: 1 };
+        return { action: meta.action, value: { direction: fields.DIR === "left" ? "left" : "right", speed: 40, duration: 1 } };
       case "drone_avoid_wall":
-        return { distance: clampNum(fields.DIST, 20, 100, 50), timeout: clampNum(fields.TIMEOUT, 2, 10, 5) };
+        return { action: "avoid_wall", value: { distance: clampNum(fields.DIST, 20, 100, 50), timeout: clampNum(fields.TIMEOUT, 2, 10, 5) } };
       case "drone_if_wall": {
         const react = ["turn_left", "turn_right", "hover", "land"].includes(fields.REACT) ? fields.REACT : "turn_right";
-        return { distance: clampNum(fields.DIST, 20, 100, 50), reaction: react,
-          reaction_value: react === "land" ? null : react === "hover" ? 2 : 90 };
+        return { action: "if_wall", value: { distance: clampNum(fields.DIST, 20, 100, 50), reaction: react,
+          reaction_value: react === "land" ? null : react === "hover" ? 2 : 90 } };
       }
       case "drone_if_height": {
         const react = ["land", "hover", "up", "down"].includes(fields.REACT) ? fields.REACT : "land";
-        return { comparison: fields.COMP === "below" ? "below" : "above",
+        return { action: "if_height", value: { comparison: fields.COMP === "below" ? "below" : "above",
           height: clampNum(fields.HEIGHT, 30, 150, 120), reaction: react,
-          reaction_value: react === "land" ? null : react === "hover" ? 2 : 40 };
+          reaction_value: react === "land" ? null : react === "hover" ? 2 : 40 } };
       }
       case "drone_go_power":
-        return { direction: ["forward", "backward", "left", "right", "up", "down"].includes(fields.DIR) ? fields.DIR : "forward",
-          power: clampNum(fields.POWER, 20, 70, 40), duration: clampNum(fields.DUR, 0.5, 3, 1) };
+        return { action: "go_power", value: { direction: ["forward", "backward", "left", "right", "up", "down"].includes(fields.DIR) ? fields.DIR : "forward",
+          power: clampNum(fields.POWER, 20, 70, 40), duration: clampNum(fields.DUR, 0.5, 3, 1) } };
       default:
         return null;
     }
@@ -234,10 +237,10 @@
   }
 
   const OLD_DEF_TO_TYPE = {
-    takeoff: "drone_takeoff", land: "drone_land", forward: "drone_forward",
-    back: "drone_back", left: "drone_left", right: "drone_right",
-    up: "drone_up", down: "drone_down", turn_left: "drone_turn_left",
-    turn_right: "drone_turn_right", go_power: "drone_go_power",
+    takeoff: "drone_takeoff", land: "drone_land", forward: "drone_go",
+    back: "drone_go", left: "drone_go", right: "drone_go",
+    up: "drone_go", down: "drone_go", turn_left: "drone_turn",
+    turn_right: "drone_turn", go_power: "drone_go_power",
     led_red: "drone_led", led_green: "drone_led", led_blue: "drone_led",
     led_yellow: "drone_led", led_purple: "drone_led", led_off: "drone_led_off",
     ping: "drone_ping", buzzer: "drone_buzzer", sound_sequence: "drone_sound_sequence",
@@ -261,9 +264,12 @@
     const v = step.value;
     const obj = (x) => (x && typeof x === "object" ? x : {});
     switch (type) {
-      case "drone_forward": case "drone_back": case "drone_left": case "drone_right":
-      case "drone_up": case "drone_down": return { VALUE: clampNum(v, 20, 150, 50) };
-      case "drone_turn_left": case "drone_turn_right": return { VALUE: clampNum(v, 45, 180, 90) };
+      case "drone_go": {
+        const dirMap = { forward: "forward", back: "backward", left: "left", right: "right", up: "up", down: "down" };
+        return { DIR: dirMap[step.defId] || "forward", VALUE: clampNum(v, 20, 150, 50) };
+      }
+      case "drone_turn":
+        return { DIR: step.defId === "turn_left" ? "left" : "right", VALUE: clampNum(v, 45, 180, 90) };
       case "drone_hover": return { VALUE: clampNum(v, 1, 5, 2) };
       case "drone_flip": return { DIR: ["front", "back", "left", "right"].includes(v) ? v : "back" };
       case "drone_led": return { COLOUR: nearestLedColour(v) };
@@ -325,6 +331,6 @@
     return { blocks: { languageVersion: 0, blocks: [root] } };
   }
 
-  return { CATEGORIES, LED_COLOURS, BLOCKS, BLOCK_BY_TYPE, toolboxForLevel, stepValue, clampNum,
+  return { CATEGORIES, LED_COLOURS, BLOCKS, BLOCK_BY_TYPE, toolboxForLevel, stepFor, clampNum,
     stepsFromScript, pythonLines, migrateOldProgram };
 });
