@@ -224,70 +224,47 @@
 </main>
 
 <!-- ============ CODE ============ -->
-<main id="codePage" class="page hidden">
-  <section class="level-deck" aria-labelledby="levelTitle">
-    <div class="level-deck-copy">
-      <span class="panel-kicker">BLOCK FLIGHT SCHOOL</span>
-      <h2 id="levelTitle">Choose your coding level</h2>
-      <p>Higher levels add detail without taking earlier blocks away. Switch levels any time&mdash;your flight plan stays together.</p>
-    </div>
-    <div class="level-bar" role="group" aria-label="Coding level">
-      <button class="level-btn hardware-key" data-level="1" aria-label="Level 1: Pictures"><span class="level-number">1</span><span class="level-name">Pictures</span></button>
-      <button class="level-btn hardware-key" data-level="2" aria-label="Level 2: Sequences"><span class="level-number">2</span><span class="level-name">Sequences</span></button>
-      <button class="level-btn hardware-key" data-level="3" aria-label="Level 3: Controls"><span class="level-number">3</span><span class="level-name">Controls</span></button>
-      <button class="level-btn hardware-key" data-level="4" aria-label="Level 4: Sensors"><span class="level-number">4</span><span class="level-name">Sensors</span></button>
-      <button class="level-btn hardware-key" data-level="5" aria-label="Level 5: Python"><span class="level-number">5</span><span class="level-name">Python</span></button>
-    </div>
-    <div class="level-status" aria-live="polite">
-      <span id="levelPill" class="level-pill">LEVEL 1</span>
-      <span id="levelHint"></span>
-    </div>
-  </section>
-
-  <section class="blockly-shell" aria-label="Block coding editor">
-    <nav id="categoryRail" class="category-rail" aria-label="Block categories"></nav>
-
-    <section class="toolbox-pane" aria-labelledby="toolboxTitle">
-      <header class="toolbox-heading">
-        <span id="toolboxIcon" class="toolbox-icon" aria-hidden="true">↗</span>
-        <div><span class="panel-kicker">TOOLBOX</span><h2 id="toolboxTitle">Flight</h2></div>
-      </header>
-      <p id="toolboxHelp" class="toolbox-help">Drag a block into your flight plan. With a keyboard, focus it and press Enter.</p>
-      <div class="palette" id="palette"></div>
-    </section>
-
-    <section class="workspace-pane" aria-labelledby="workspaceTitle">
-      <header class="workspace-heading">
-        <div>
-          <span class="panel-kicker">PROGRAM WORKSPACE</span>
-          <h2 id="workspaceTitle">My flight plan</h2>
+<main id="codePage" class="page code-page hidden">
+  <div class="blockly-app">
+    <header class="blockly-topbar">
+      <div class="topbar-left">
+        <span class="rail-levels-label">Levels</span>
+        <div class="rail-level-squares" role="group" aria-label="Coding level">
+          <button class="level-btn" data-level="1" aria-label="Level 1: Pictures">1</button>
+          <button class="level-btn" data-level="2" aria-label="Level 2: Sequences">2</button>
+          <button class="level-btn" data-level="3" aria-label="Level 3: Controls">3</button>
+          <button class="level-btn" data-level="4" aria-label="Level 4: Sensors">4</button>
+          <button class="level-btn" data-level="5" aria-label="Level 5: Python">5</button>
         </div>
-        <span class="workspace-meta">
-          <span id="saveStatus" class="save-status" role="status" aria-live="polite">SAVED ON THIS DEVICE</span>
-          <span id="blockCount" class="block-count">0 / 30 BLOCKS</span>
-        </span>
-      </header>
-      <div class="workspace-tip"><span aria-hidden="true">✦</span> Mix blocks from every unlocked level. Drag the dotted grip to reorder, or use the arrow buttons.</div>
-      <ol id="programList" class="program block-workspace" aria-label="Flight plan blocks"></ol>
-      <div id="programEmpty" class="workspace-empty">
-        <span class="empty-drone" aria-hidden="true">✣</span>
-        <strong>Build your first flight</strong>
-          <span>Choose a category, then drag a block here.</span>
+        <button id="railCollapseBtn" type="button" aria-label="Hide or show the block menu">&#10094;</button>
       </div>
-      <div class="row program-actions">
-        <button id="runBtn" class="btn-big btn-go half hardware-key"><span class="key-label">EXECUTE PLAN</span><span class="key-value">▶ RUN FLIGHT</span></button>
-        <button id="clearBtn" class="btn-mid half hardware-key">CLEAR PLAN</button>
+      <span id="levelHint" class="level-hint" aria-live="polite"></span>
+      <div class="topbar-right">
+        <span id="saveStatus" class="save-status" role="status" aria-live="polite">SAVED ON THIS DEVICE</span>
+        <span id="blockCount" class="block-count">0 / 30 STEPS</span>
+        <button id="clearBtn" class="btn-mid hardware-key" type="button">CLEAR</button>
+        <button id="runBtn" class="btn-big btn-go hardware-key" type="button"><span class="key-label">EXECUTE PLAN</span><span class="key-value">&#9654; RUN FLIGHT</span></button>
       </div>
-      <div id="pythonPanel" class="python-panel terminal-window hidden">
-        <div class="terminal-titlebar">
-          <span class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="terminal-filename">mission.py</span>
-          <span class="terminal-language">LIVE PYTHON</span>
-        </div>
-        <pre id="pythonCode" aria-label="Python code for this flight plan"></pre>
+    </header>
+    <div id="blocklyDiv" class="blockly-host" aria-label="Block coding workspace"></div>
+    <div id="editorFallback" class="editor-fallback hidden">
+      <strong>The coding blocks couldn't load.</strong>
+      <span>Pull down to refresh the page. If that doesn't fix it, tell your teacher.</span>
+    </div>
+    <div id="pythonPanel" class="python-panel terminal-window hidden">
+      <div class="terminal-titlebar">
+        <span class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="terminal-filename">mission.py</span>
+        <span class="terminal-language">LIVE PYTHON</span>
       </div>
-    </section>
-  </section>
+      <pre id="pythonCode" aria-label="Python code for this flight plan"></pre>
+    </div>
+  </div>
+  <div id="rotateCover" class="rotate-cover hidden" role="dialog" aria-modal="true" aria-labelledby="rotateTitle">
+    <div class="rotate-device" aria-hidden="true"></div>
+    <strong id="rotateTitle">Turn your iPad sideways</strong>
+    <span>The block coding screen needs the wide view.</span>
+  </div>
 </main>
 
 <footer class="emergency-bar">
