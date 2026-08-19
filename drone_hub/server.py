@@ -43,7 +43,13 @@ STATIC_FILES = {
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/qrcode.js": ("qrcode.js", "text/javascript; charset=utf-8"),
+    "/blockly.min.js": ("blockly.min.js", "text/javascript; charset=utf-8"),
+    "/blocks-data.js": ("blocks-data.js", "text/javascript; charset=utf-8"),
+    "/editor.js": ("editor.js", "text/javascript; charset=utf-8"),
     "/icon.png": ("icon.png", "image/png"),
+    "/pwa-icon.svg": ("pwa-icon.svg", "image/svg+xml; charset=utf-8"),
+    "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json; charset=utf-8"),
+    "/sw.js": ("sw.js", "text/javascript; charset=utf-8"),
 }
 
 COLOURS = [
@@ -163,7 +169,12 @@ def step_label(action, value):
         "back": "Backward", "left": "Slide left", "right": "Slide right",
         "up": "Up", "down": "Down", "turn_left": "Turn left",
         "turn_right": "Turn right", "hover": "Wait", "flip": "Flip",
-        "led": "Light colour",
+        "led": "Light colour", "led_off": "Light off", "ping": "Beep and blink",
+        "buzzer": "Play note", "sound_sequence": "Play sound",
+        "square": "Fly a square", "triangle": "Fly a triangle",
+        "circle": "Fly a circle", "sway": "Sway side to side",
+        "avoid_wall": "Fly until obstacle", "if_wall": "Check front sensor",
+        "if_height": "Check height", "go_power": "Power move",
     }
     label = names.get(action, action)
     if action in ("forward", "back", "left", "right", "up", "down"):
@@ -172,7 +183,24 @@ def step_label(action, value):
         label += f" {int(clamp(value, 45, 180))} deg"
     elif action == "hover":
         label += f" {int(clamp(value, 1, 5))} s"
+    elif action == "buzzer":
+        label += f" {value['frequency']} Hz"
+    elif action == "sound_sequence":
+        label += f": {value}"
     return label
+
+
+def validate_reaction(action, value):
+    """Return a small, safe action used by a sensor decision block."""
+    if action in ("turn_left", "turn_right"):
+        return {"action": action, "value": clamp(value, 45, 180)}
+    if action == "hover":
+        return {"action": action, "value": clamp(value, 1, 5)}
+    if action in ("up", "down"):
+        return {"action": action, "value": clamp(value, 20, 60)}
+    if action == "land":
+        return {"action": action, "value": None}
+    return None
 
 
 def validate_step(raw):
@@ -182,7 +210,10 @@ def validate_step(raw):
     action = raw.get("action")
     value = raw.get("value")
     allowed = {"takeoff", "land", "forward", "back", "left", "right", "up",
-               "down", "turn_left", "turn_right", "hover", "flip", "led"}
+               "down", "turn_left", "turn_right", "hover", "flip", "led",
+               "led_off", "ping", "buzzer", "sound_sequence", "square",
+               "triangle", "circle", "sway", "avoid_wall", "if_wall",
+               "if_height", "go_power"}
     if action not in allowed:
         return None
     if action in ("forward", "back", "left", "right", "up", "down"):
@@ -197,6 +228,47 @@ def validate_step(raw):
         if not (isinstance(value, (list, tuple)) and len(value) == 3):
             return None
         value = [int(clamp(v, 0, 255)) for v in value]
+    elif action == "buzzer":
+        if not isinstance(value, dict):
+            return None
+        value = {"frequency": int(clamp(value.get("frequency"), 200, 1200)),
+                 "duration": int(clamp(value.get("duration"), 100, 2000))}
+    elif action == "sound_sequence":
+        value = value if value in ("success", "warning", "error") else "success"
+    elif action in ("square", "triangle", "circle", "sway"):
+        if not isinstance(value, dict):
+            return None
+        value = {"direction": value.get("direction") if value.get("direction") in ("left", "right") else "right",
+                 "speed": int(clamp(value.get("speed"), 25, 60)),
+                 "duration": clamp(value.get("duration"), 0.5, 2)}
+    elif action == "avoid_wall":
+        if not isinstance(value, dict):
+            return None
+        value = {"distance": int(clamp(value.get("distance"), 20, 100)),
+                 "timeout": int(clamp(value.get("timeout"), 2, 10))}
+    elif action == "if_wall":
+        if not isinstance(value, dict):
+            return None
+        reaction = validate_reaction(value.get("reaction"), value.get("reaction_value"))
+        if reaction is None or reaction["action"] not in ("turn_left", "turn_right", "hover", "land"):
+            return None
+        value = {"distance": int(clamp(value.get("distance"), 20, 100)), "reaction": reaction}
+    elif action == "if_height":
+        if not isinstance(value, dict):
+            return None
+        reaction = validate_reaction(value.get("reaction"), value.get("reaction_value"))
+        if reaction is None or reaction["action"] not in ("land", "hover", "up", "down"):
+            return None
+        value = {"comparison": value.get("comparison") if value.get("comparison") in ("above", "below") else "above",
+                 "height": int(clamp(value.get("height"), 30, 150)), "reaction": reaction}
+    elif action == "go_power":
+        if not isinstance(value, dict):
+            return None
+        direction = value.get("direction")
+        if direction not in ("forward", "backward", "left", "right", "up", "down"):
+            return None
+        value = {"direction": direction, "power": int(clamp(value.get("power"), 20, 70)),
+                 "duration": clamp(value.get("duration"), 0.5, 3)}
     else:
         value = None
     return {"action": action, "value": value, "label": step_label(action, value)}
@@ -220,6 +292,33 @@ def execute(backend, item):
         backend.flip("forward" if value == "front" else value)
     elif action == "led":
         backend.set_led(*value)
+    elif action == "led_off":
+        backend.led_off()
+    elif action == "ping":
+        backend.ping()
+    elif action == "buzzer":
+        backend.buzzer(value["frequency"], value["duration"])
+    elif action == "sound_sequence":
+        backend.sound_sequence(value)
+    elif action in ("square", "triangle", "circle", "sway"):
+        backend.pattern(action, value["direction"], value["speed"], value["duration"])
+    elif action == "avoid_wall":
+        backend.avoid_wall(value["distance"], value["timeout"])
+    elif action == "if_wall":
+        if backend.detect_wall(value["distance"]):
+            execute(backend, value["reaction"])
+    elif action == "if_height":
+        try:
+            height = float(backend.get_height())
+        except (TypeError, ValueError):
+            return
+        if not 0 <= height <= 200:  # ignore documented sensor error/out-of-range values
+            return
+        matches = height > value["height"] if value["comparison"] == "above" else height < value["height"]
+        if matches:
+            execute(backend, value["reaction"])
+    elif action == "go_power":
+        backend.go_power(value["direction"], value["power"], value["duration"])
 
 
 # ---------------------------------------------------------------- API logic
@@ -365,6 +464,12 @@ class HubHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
+            # Let the service worker check for updates every time the Hub starts.
+            # The worker itself keeps a safe local copy of the student app shell.
+            self.send_header("Cache-Control", "no-cache")
+            if path == "/sw.js":
+                self.send_header("Service-Worker-Allowed", "/")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(body)
             return

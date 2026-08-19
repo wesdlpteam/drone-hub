@@ -158,6 +158,85 @@ class PracticeDrone:
         with self.lock:
             self.led = [int(clamp(r, 0, 255)), int(clamp(g, 0, 255)), int(clamp(b, 0, 255))]
 
+    def led_off(self):
+        self.set_led(0, 0, 0)
+
+    def ping(self):
+        self.last_trick = "ping"
+        for _ in self._slices(0.35):
+            pass
+        self.last_trick = None
+
+    def buzzer(self, frequency, duration_ms):
+        self.last_trick = f"note_{int(frequency)}"
+        for _ in self._slices(clamp(duration_ms, 100, 2000) / 1000.0):
+            pass
+        self.last_trick = None
+
+    def sound_sequence(self, kind):
+        self.last_trick = f"sound_{kind}"
+        for _ in self._slices(1.0):
+            pass
+        self.last_trick = None
+
+    def get_front_range(self):
+        """Distance to the edge of the practice airspace along the heading.
+        The real sensor reports 999 when nothing is within its 150 cm range."""
+        with self.lock:
+            x, y, heading = self.x, self.y, self.heading
+        angle = math.radians(heading)
+        dx, dy = math.sin(angle), math.cos(angle)
+        boundary = 300.0
+        distances = []
+        if abs(dx) > 1e-9:
+            distances.append(((boundary if dx > 0 else -boundary) - x) / dx)
+        if abs(dy) > 1e-9:
+            distances.append(((boundary if dy > 0 else -boundary) - y) / dy)
+        positive = [distance for distance in distances if distance >= 0]
+        distance = min(positive) if positive else 999
+        return round(distance, 1) if distance <= 150 else 999
+
+    def get_height(self):
+        with self.lock:
+            return round(self.altitude, 1)
+
+    def detect_wall(self, distance=50):
+        reading = self.get_front_range()
+        return 0 < reading <= clamp(distance, 20, 100)
+
+    def avoid_wall(self, distance=50, timeout=5):
+        deadline = time.monotonic() + clamp(timeout, 2, 10)
+        while self.flying and time.monotonic() < deadline and not self.detect_wall(distance):
+            if self.abort_event.is_set():
+                return
+            self.go_power("forward", 30, 0.5)
+
+    def go_power(self, direction, power=40, duration=1):
+        direction = "back" if direction == "backward" else direction
+        distance = clamp(clamp(power, 20, 70) * clamp(duration, 0.5, 3), MIN_DIST_CM, MAX_DIST_CM)
+        self.move(direction, distance)
+
+    def pattern(self, name, direction="right", speed=40, duration=1):
+        turn_direction = "right" if direction == "right" else "left"
+        distance = clamp(clamp(speed, 25, 60) * clamp(duration, 0.5, 2), 20, 60)
+        if name == "square":
+            for _ in range(4):
+                self.move("forward", distance)
+                self.turn(turn_direction, 90)
+        elif name == "triangle":
+            for _ in range(3):
+                self.move("forward", distance)
+                self.turn(turn_direction, 120)
+        elif name == "circle":
+            for _ in range(8):
+                self.move("forward", 20)
+                self.turn(turn_direction, 45)
+        elif name == "sway":
+            first, second = ("right", "left") if direction == "right" else ("left", "right")
+            self.move(first, distance)
+            self.move(second, distance * 2)
+            self.move(first, distance)
+
     def get_battery(self):
         return round(self.battery)
 
@@ -249,7 +328,46 @@ class RealDrone:
 
     def set_led(self, r, g, b):
         self.led = [int(clamp(r, 0, 255)), int(clamp(g, 0, 255)), int(clamp(b, 0, 255))]
-        self.drone.set_drone_LED(self.led[0], self.led[1], self.led[2], 255)
+        self.drone.set_drone_LED(self.led[0], self.led[1], self.led[2], 100)
+
+    def led_off(self):
+        self.led = [0, 0, 0]
+        self.drone.drone_LED_off()
+
+    def ping(self):
+        self.drone.ping()
+
+    def buzzer(self, frequency, duration_ms):
+        self.drone.drone_buzzer(int(clamp(frequency, 200, 1200)), int(clamp(duration_ms, 100, 2000)))
+
+    def sound_sequence(self, kind):
+        self.drone.drone_buzzer_sequence(kind)
+
+    def get_front_range(self):
+        return self.drone.get_front_range("cm")
+
+    def get_height(self):
+        return self.drone.get_height("cm")
+
+    def detect_wall(self, distance=50):
+        return bool(self.drone.detect_wall(int(clamp(distance, 20, 100))))
+
+    def avoid_wall(self, distance=50, timeout=5):
+        self.drone.avoid_wall(timeout=int(clamp(timeout, 2, 10)), distance=int(clamp(distance, 20, 100)))
+
+    def go_power(self, direction, power=40, duration=1):
+        self.drone.go(direction, int(clamp(power, 20, 70)), clamp(duration, 0.5, 3))
+
+    def pattern(self, name, direction="right", speed=40, duration=1):
+        direction_value = 1 if direction == "right" else -1
+        speed = int(clamp(speed, 25, 60))
+        duration = clamp(duration, 0.5, 2)
+        if name == "circle":
+            self.drone.circle(speed, direction_value)
+        elif name == "sway":
+            self.drone.sway(speed, duration, direction_value)
+        else:
+            getattr(self.drone, name)(speed, duration, direction_value)
 
     def get_battery(self):
         try:

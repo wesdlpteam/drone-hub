@@ -10,8 +10,8 @@ let myName = sessionStorage.getItem("droneName") || "";
 let droneId = sessionStorage.getItem("droneId") || null;
 let level = parseInt(localStorage.getItem("codeLevel") || "1", 10);
 let selectedDist = 50, selectedTurn = 90;          // FLY page settings
-let codeDist = 50, codeTurn = 90, repeatCount = 2; // CODE page settings (L3+)
-let program = [];        // {action, value, label}
+let activeCategory = "flight";
+let program = [];        // {defId, action, value, sourceLevel}
 let runningStep = null;  // 1-based index into the FLATTENED program
 let flatMap = [];        // flattened index -> program index (for highlights)
 let lastStatus = null;
@@ -21,7 +21,17 @@ let radarStart = 0, radarDuration = 1000, radarLastPoll = 0;
 let radarFrame = null, radarFace = null, radarFaceKey = "";
 let radarSweepGradient = null, radarSweepKey = "";
 let radarPixelRatio = 1, radarCanvasDirty = true;
+let hubConnected = null;
+let pollTimer = null;
+let deferredInstallPrompt = null;
+let programStorageReady = false;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const PROGRAM_STORAGE_KEY = "dronePilotProgramV1";
+const APP_TAB_KEY = "dronePilotActiveTab";
+const HUB_CONTROL_SELECTOR = [
+  "#droneChip", "#runBtn", "#stopBtn", "#motorsOffBtn", "#confirmMotorsOff",
+  "[data-cmd]", "[data-move]", "[data-turn]", "#ledRow .led", ".drone-card",
+].join(",");
 
 /* ---------------- helpers ---------------- */
 
@@ -33,36 +43,60 @@ function toast(msg, ms = 1800) {
   t._timer = setTimeout(() => t.classList.add("hidden"), ms);
 }
 
-async function api(path, body) {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (res.status === 403 && data.error === "not_pilot") {
-    token = null;
-    sessionStorage.removeItem("droneToken");
-    showPicker();
-    toast("Someone else took your drone! Pick again.");
+async function fetchWithTimeout(path, options = {}, timeout = 3500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(path, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
   }
-  return { ok: res.ok, data };
 }
 
-function labelFor(action, value) {
-  const names = {
-    takeoff: "🛫 Take off", land: "🛬 Land", forward: "⬆️ Forward",
-    back: "⬇️ Backward", left: "⬅️ Slide left", right: "➡️ Slide right",
-    up: "🔼 Up", down: "🔽 Down", turn_left: "↩️ Turn left",
-    turn_right: "↪️ Turn right", hover: "⏱️ Wait", flip: "🤸 Flip",
-    led: "🌈 Light", repeat_start: "🔁 Repeat", repeat_end: "🏁 End repeat",
-  };
-  let label = names[action] || action;
-  if (["forward", "back", "left", "right", "up", "down"].includes(action)) label += ` ${value} cm`;
-  else if (action.startsWith("turn")) label += ` ${value}°`;
-  else if (action === "hover") label += ` ${value} s`;
-  else if (action === "repeat_start") label += ` ×${value}`;
-  return label;
+function setHubConnection(connected) {
+  const wasConnected = hubConnected;
+  hubConnected = connected;
+  document.body.classList.toggle("hub-offline", !connected);
+  $("connectionBanner").classList.toggle("hidden", connected);
+  document.querySelectorAll(HUB_CONTROL_SELECTOR).forEach((button) => { button.disabled = !connected; });
+
+  if (!connected) {
+    $("modeChip").textContent = "NO HUB";
+    $("emergencyOverlay").classList.add("hidden");
+    $("nowBar").classList.add("hidden");
+    document.body.classList.remove("flying");
+    document.body.classList.add("radar-stale");
+    stopRadarLoop();
+    if (runningStep !== null) {
+      runningStep = null;
+      renderProgram();
+    }
+  } else if (wasConnected === false) {
+    toast("Drone Hub reconnected — flight controls are ready.", 2600);
+  }
+}
+
+async function api(path, body) {
+  try {
+    const res = await fetchWithTimeout(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    setHubConnection(true);
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 403 && data.error === "not_pilot") {
+      token = null;
+      sessionStorage.removeItem("droneToken");
+      showPicker();
+      toast("Someone else took your drone! Pick again.");
+    }
+    return { ok: res.ok, data };
+  } catch (error) {
+    setHubConnection(false);
+    toast("The Drone Hub is offline. Your work is still saved.", 2600);
+    return { ok: false, data: { error: "offline" } };
+  }
 }
 
 function myDrone() {
@@ -102,6 +136,7 @@ function renderDroneCards() {
       `<span class="dot" style="background:rgb(${d.colour.join(",")})"></span>` +
       `<span class="dc-name">${d.name}</span>` +
       `<span class="dc-sub">🔋 ${battery} · ${d.pilot ? "👤 " + d.pilot : "free!"}</span>`;
+    card.disabled = hubConnected !== true;
     card.addEventListener("click", async () => {
       const { data } = await api("/api/control", { drone_id: d.id, name: myName });
       if (data.token) {
@@ -121,17 +156,87 @@ function renderDroneCards() {
 if (token && droneId) $("joinOverlay").classList.add("hidden");
 if (myName) $("nameInput").value = myName;
 
+/* ---------------- installable app ---------------- */
+
+const standaloneQuery = window.matchMedia("(display-mode: standalone)");
+
+function isStandaloneApp() {
+  return standaloneQuery.matches || window.navigator.standalone === true;
+}
+
+function updateAppModeUi() {
+  const standalone = isStandaloneApp();
+  document.body.classList.toggle("standalone-mode", standalone);
+  $("installBtn").classList.toggle("hidden", standalone);
+}
+
+function showInstallGuide() {
+  $("installOverlay").classList.remove("hidden");
+  $("closeInstallBtn").focus();
+}
+
+function hideInstallGuide() {
+  $("installOverlay").classList.add("hidden");
+  $("installBtn").focus();
+}
+
+updateAppModeUi();
+if (standaloneQuery.addEventListener) standaloneQuery.addEventListener("change", updateAppModeUi);
+else if (standaloneQuery.addListener) standaloneQuery.addListener(updateAppModeUi);
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  updateAppModeUi();
+});
+
+$("installBtn").addEventListener("click", async () => {
+  if (!deferredInstallPrompt) {
+    showInstallGuide();
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  updateAppModeUi();
+});
+
+$("closeInstallBtn").addEventListener("click", hideInstallGuide);
+$("installOverlay").addEventListener("click", (event) => {
+  if (event.target === $("installOverlay")) hideInstallGuide();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("installOverlay").classList.contains("hidden")) hideInstallGuide();
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  $("installBtn").classList.add("hidden");
+  toast("Drone Pilot installed!");
+});
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {
+    // Classroom HTTP still works as a Home Screen web app. Full offline
+    // caching becomes available automatically on localhost or an HTTPS host.
+  }));
+}
+
 /* ---------------- tabs ---------------- */
 
-function showTab(fly) {
+function showTab(fly, remember = true) {
   $("tabFly").classList.toggle("active", fly);
   $("tabCode").classList.toggle("active", !fly);
+  $("tabFly").setAttribute("aria-selected", String(fly));
+  $("tabCode").setAttribute("aria-selected", String(!fly));
   $("flyPage").classList.toggle("hidden", !fly);
   $("codePage").classList.toggle("hidden", fly);
+  if (remember) localStorage.setItem(APP_TAB_KEY, fly ? "fly" : "code");
   syncRadarLoop();
 }
 $("tabFly").addEventListener("click", () => showTab(true));
 $("tabCode").addEventListener("click", () => showTab(false));
+showTab(localStorage.getItem(APP_TAB_KEY) !== "code", false);
 
 /* ---------------- FLY controls ---------------- */
 
@@ -169,173 +274,874 @@ function chipGroup(sel, apply) {
 }
 chipGroup("#distChips .chip-btn", (b) => (selectedDist = Number(b.dataset.dist)));
 chipGroup("#turnChips .chip-btn", (b) => (selectedTurn = Number(b.dataset.deg)));
-chipGroup("#codeDistChips .chip-btn", (b) => (codeDist = Number(b.dataset.dist)));
-chipGroup("#codeTurnChips .chip-btn", (b) => (codeTurn = Number(b.dataset.deg)));
-chipGroup("#repeatChips .chip-btn", (b) => (repeatCount = Number(b.dataset.rep)));
 
 /* ---------------- STOP ---------------- */
 
 $("stopBtn").addEventListener("click", async () => {
-  await api("/api/stop", droneId ? { drone_id: droneId } : {});
+  const { ok } = await api("/api/stop", droneId ? { drone_id: droneId } : {});
+  if (!ok) return;
   toast("🛑 Stopping and landing…");
 });
 $("motorsOffBtn").addEventListener("click", () => $("emergencyOverlay").classList.remove("hidden"));
 $("cancelMotorsOff").addEventListener("click", () => $("emergencyOverlay").classList.add("hidden"));
 $("confirmMotorsOff").addEventListener("click", async () => {
   $("emergencyOverlay").classList.add("hidden");
-  await api("/api/motors_off", droneId ? { drone_id: droneId } : {});
+  const { ok } = await api("/api/motors_off", droneId ? { drone_id: droneId } : {});
+  if (!ok) return;
   toast("⚠️ Motors off!");
 });
 
 /* ---------------- coding levels ---------------- */
 
-const LEVEL_HINTS = {
-  1: "Tap the pictures to build your flight, then press RUN!",
-  2: "New blocks: slide, up & down, and wait.",
-  3: "You choose the numbers now — distance, turns and more.",
-  4: "Repeat blocks! Put blocks between 🔁 Repeat and 🏁 End repeat.",
-  5: "You're coding like a pro — check out the real Python your blocks make!",
+/* ---------------- progressive block editor ---------------- */
+
+const PROGRESSIVE_LEVEL_HINTS = {
+  1: "Picture blocks use safe ready-made settings. Great for a first flight.",
+  2: "Add words, sound, timing, loops, flips and movement in every direction.",
+  3: "Tune distances in 1 cm steps, plus angles, colours, notes and flight patterns.",
+  4: "Use the front and bottom range sensors to react to the world.",
+  5: "Add power-based flight controls and see the real Python your blocks create.",
 };
 
-function applyLevel() {
-  localStorage.setItem("codeLevel", String(level));
-  document.querySelectorAll(".level-btn").forEach((b) =>
-    b.classList.toggle("active", Number(b.dataset.level) === level)
-  );
-  document.querySelectorAll("[data-min-level]").forEach((el) => {
-    el.classList.toggle("hidden", level < Number(el.dataset.minLevel));
-  });
-  $("palette").classList.toggle("icons-only", level === 1);
-  $("pythonPanel").classList.toggle("hidden", level < 5);
-  $("levelHint").textContent = LEVEL_HINTS[level];
-  renderPython();
+const CODE_CATEGORIES = [
+  { id: "flight", name: "Flight", icon: "↗", colour: "#ffc86f" },
+  { id: "movement", name: "Movement", icon: "↔", colour: "#ff9d2e" },
+  { id: "lights", name: "Lights", icon: "☼", colour: "#c334ee" },
+  { id: "sound", name: "Sound", icon: "◖))", colour: "#586bdc" },
+  { id: "timing", name: "Timing", icon: "◷", colour: "#ef4771" },
+  { id: "loops", name: "Loops", icon: "⟳", colour: "#9edced" },
+  { id: "sensors", name: "Sensors", icon: "◉", colour: "#9583f4" },
+  { id: "logic", name: "Logic", icon: "◇", colour: "#48dbad" },
+  { id: "tricks", name: "Tricks", icon: "✦", colour: "#df7bea" },
+];
+
+const BLOCK_DEFS = [
+  { id: "takeoff", action: "takeoff", category: "flight", minLevel: 1, icon: "↑", label: "take off", hint: "rise to about 80 cm" },
+  { id: "land", action: "land", category: "flight", minLevel: 1, icon: "↓", label: "land safely", hint: "soft landing" },
+
+  { id: "forward", action: "forward", category: "movement", minLevel: 1, icon: "↑", label: "fly forward", hint: "distance" },
+  { id: "back", action: "back", category: "movement", minLevel: 1, icon: "↓", label: "fly backward", hint: "distance" },
+  { id: "turn_left", action: "turn_left", category: "movement", minLevel: 1, icon: "↶", label: "turn left", hint: "angle" },
+  { id: "turn_right", action: "turn_right", category: "movement", minLevel: 1, icon: "↷", label: "turn right", hint: "angle" },
+  { id: "left", action: "left", category: "movement", minLevel: 2, icon: "←", label: "slide left", hint: "distance" },
+  { id: "right", action: "right", category: "movement", minLevel: 2, icon: "→", label: "slide right", hint: "distance" },
+  { id: "up", action: "up", category: "movement", minLevel: 2, icon: "⇡", label: "fly up", hint: "distance" },
+  { id: "down", action: "down", category: "movement", minLevel: 2, icon: "⇣", label: "fly down", hint: "distance" },
+  { id: "go_power", action: "go_power", category: "movement", minLevel: 5, icon: "➤", label: "fly with power", hint: "direction · power · time" },
+
+  { id: "led_red", action: "led", category: "lights", minLevel: 1, icon: "●", label: "red light", colour: [255, 70, 84] },
+  { id: "led_green", action: "led", category: "lights", minLevel: 1, icon: "●", label: "green light", colour: [23, 210, 139] },
+  { id: "led_blue", action: "led", category: "lights", minLevel: 1, icon: "●", label: "blue light", colour: [67, 184, 255] },
+  { id: "led_yellow", action: "led", category: "lights", minLevel: 2, icon: "●", label: "yellow light", colour: [255, 205, 70] },
+  { id: "led_purple", action: "led", category: "lights", minLevel: 2, icon: "●", label: "purple light", colour: [187, 103, 255] },
+  { id: "led_off", action: "led_off", category: "lights", minLevel: 2, icon: "○", label: "turn drone light off" },
+
+  { id: "ping", action: "ping", category: "sound", minLevel: 2, icon: "♪", label: "beep and blink" },
+  { id: "buzzer", action: "buzzer", category: "sound", minLevel: 3, icon: "♫", label: "play a note", hint: "pitch · duration" },
+  { id: "sound_sequence", action: "sound_sequence", category: "sound", minLevel: 3, icon: "♬", label: "play a sound", hint: "success · warning · error" },
+
+  { id: "hover", action: "hover", category: "timing", minLevel: 2, icon: "◷", label: "wait and hover", hint: "seconds" },
+  { id: "repeat_start", action: "repeat_start", category: "loops", minLevel: 2, icon: "⟳", label: "repeat", hint: "start of loop" },
+  { id: "repeat_end", action: "repeat_end", category: "loops", minLevel: 2, icon: "↵", label: "end repeat", hint: "end of loop" },
+
+  { id: "avoid_wall", action: "avoid_wall", category: "sensors", minLevel: 4, icon: "◉", label: "fly until obstacle", hint: "front range sensor" },
+  { id: "if_wall", action: "if_wall", category: "logic", minLevel: 4, icon: "◇", label: "if obstacle is close", hint: "sense, then react" },
+  { id: "if_height", action: "if_height", category: "logic", minLevel: 4, icon: "◇", label: "if height matches", hint: "bottom range sensor" },
+
+  { id: "flip_front", action: "flip", category: "tricks", minLevel: 2, icon: "↥", label: "front flip", direction: "front" },
+  { id: "flip_back", action: "flip", category: "tricks", minLevel: 2, icon: "↧", label: "back flip", direction: "back" },
+  { id: "flip_left", action: "flip", category: "tricks", minLevel: 2, icon: "↶", label: "left flip", direction: "left" },
+  { id: "flip_right", action: "flip", category: "tricks", minLevel: 2, icon: "↷", label: "right flip", direction: "right" },
+  { id: "square", action: "square", category: "tricks", minLevel: 3, icon: "□", label: "fly a square", hint: "direction" },
+  { id: "triangle", action: "triangle", category: "tricks", minLevel: 3, icon: "△", label: "fly a triangle", hint: "direction" },
+  { id: "circle", action: "circle", category: "tricks", minLevel: 3, icon: "○", label: "fly a circle", hint: "direction" },
+  { id: "sway", action: "sway", category: "tricks", minLevel: 3, icon: "〰", label: "sway side to side", hint: "direction" },
+];
+
+const BLOCK_BY_ID = Object.fromEntries(BLOCK_DEFS.map((def) => [def.id, def]));
+
+function categoryFor(id) {
+  return CODE_CATEGORIES.find((category) => category.id === id) || CODE_CATEGORIES[0];
 }
 
-document.querySelectorAll(".level-btn").forEach((b) =>
-  b.addEventListener("click", () => { level = Number(b.dataset.level); applyLevel(); })
+function unlockedDefs(categoryId = activeCategory) {
+  return BLOCK_DEFS.filter((def) => def.category === categoryId && def.minLevel <= level);
+}
+
+function renderCategories() {
+  const rail = $("categoryRail");
+  rail.innerHTML = "";
+  CODE_CATEGORIES.forEach((category) => {
+    const count = unlockedDefs(category.id).length;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "category-button";
+    button.style.setProperty("--category-colour", category.colour);
+    button.classList.toggle("active", activeCategory === category.id);
+    button.classList.toggle("locked", count === 0);
+    button.disabled = count === 0;
+    button.setAttribute("aria-label", count ? `${category.name}, ${count} blocks` : `${category.name}, locked`);
+    button.innerHTML = `<span class="category-icon" aria-hidden="true">${category.icon}</span>` +
+      `<span class="category-name">${category.name}</span><span class="category-count">${count || "•"}</span>`;
+    button.addEventListener("click", () => {
+      activeCategory = category.id;
+      renderCategories();
+      renderPalette();
+    });
+    rail.append(button);
+  });
+}
+
+function renderPalette() {
+  const category = categoryFor(activeCategory);
+  $("toolboxTitle").textContent = category.name;
+  $("toolboxTitle").style.color = category.colour;
+  $("toolboxIcon").textContent = category.icon;
+  $("toolboxIcon").style.color = category.colour;
+  const palette = $("palette");
+  palette.innerHTML = "";
+  palette.classList.toggle("icons-only", level === 1);
+
+  unlockedDefs().forEach((def) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "block palette-block";
+    button.style.setProperty("--block-colour", category.colour);
+    button.draggable = false;
+    button.dataset.block = def.id;
+    button.setAttribute("aria-label", `Drag ${def.label} to the workspace. Press Enter to add it.`);
+    button.title = `Drag ${def.label} into the workspace`;
+    const iconStyle = def.colour ? ` style="color:rgb(${def.colour.join(",")})"` : "";
+    button.innerHTML = `<span class="palette-block-icon"${iconStyle}>${def.icon}</span>` +
+      `<span class="palette-block-copy"><strong>${def.label}</strong>${def.hint ? `<small>${def.hint}</small>` : ""}</span>` +
+      `<span class="block-level">L${level}</span>`;
+    button.addEventListener("click", (event) => {
+      if (button._ignoreNextClick) {
+        button._ignoreNextClick = false;
+        event.preventDefault();
+        return;
+      }
+      if (event.detail === 0) {
+        addBlock(def.id);
+        return;
+      }
+      button.classList.remove("needs-drag");
+      void button.offsetWidth;
+      button.classList.add("needs-drag");
+      toast("Drag the block into My flight plan to connect it.", 2200);
+    });
+    enablePalettePointerDrag(button, def);
+    palette.append(button);
+  });
+}
+
+function applyLevel() {
+  level = Math.max(1, Math.min(5, level));
+  localStorage.setItem("codeLevel", String(level));
+  document.querySelectorAll(".level-btn").forEach((button) => {
+    const buttonLevel = Number(button.dataset.level);
+    button.classList.toggle("active", buttonLevel === level);
+    button.classList.toggle("complete", buttonLevel < level);
+  });
+  if (!unlockedDefs(activeCategory).length) {
+    activeCategory = CODE_CATEGORIES.find((category) => unlockedDefs(category.id).length).id;
+  }
+  $("levelPill").textContent = `LEVEL ${level}`;
+  $("levelHint").textContent = PROGRESSIVE_LEVEL_HINTS[level];
+  $("pythonPanel").classList.toggle("hidden", level < 5);
+  renderCategories();
+  renderPalette();
+  renderProgram();
+}
+
+document.querySelectorAll(".level-btn").forEach((button) =>
+  button.addEventListener("click", () => {
+    level = Number(button.dataset.level);
+    applyLevel();
+  })
 );
 
-/* ---------------- CODE (block programs) ---------------- */
+/* ---------------- progressive program builder ---------------- */
 
-function blockValue(action) {
-  const dist = level >= 3 ? codeDist : 50;
-  const turn = level >= 3 ? codeTurn : 90;
-  if (["forward", "back", "left", "right", "up", "down"].includes(action)) return dist;
-  if (action === "turn_left" || action === "turn_right") return turn;
-  if (action === "hover") return 2;
-  if (action === "flip") return "back";
-  if (action === "repeat_start") return repeatCount;
+function defaultValue(def) {
+  if (["forward", "back", "left", "right", "up", "down"].includes(def.action)) return 50;
+  if (["turn_left", "turn_right"].includes(def.action)) return 90;
+  if (def.action === "hover") return 2;
+  if (def.action === "repeat_start") return 2;
+  if (def.action === "led") return [...def.colour];
+  if (def.action === "flip") return def.direction;
+  if (def.action === "buzzer") return { frequency: 523, duration: 500 };
+  if (def.action === "sound_sequence") return "success";
+  if (["square", "triangle", "circle", "sway"].includes(def.action)) {
+    return { direction: "right", speed: 40, duration: 1 };
+  }
+  if (def.action === "avoid_wall") return { distance: 50, timeout: 5 };
+  if (def.action === "if_wall") return { distance: 50, reaction: "turn_right", reaction_value: 90 };
+  if (def.action === "if_height") return { comparison: "above", height: 120, reaction: "land", reaction_value: null };
+  if (def.action === "go_power") return { direction: "forward", power: 40, duration: 1 };
+  return null;
+}
+
+function savedNumber(value, fallback, min, max) {
+  const number = Number(value);
+  return Math.max(min, Math.min(max, Number.isFinite(number) ? number : fallback));
+}
+
+function safeSavedValue(def, value) {
+  const action = def.action;
+  const fallback = defaultValue(def);
+  if (["forward", "back", "left", "right", "up", "down"].includes(action)) {
+    return savedNumber(value, fallback, 20, 150);
+  }
+  if (["turn_left", "turn_right"].includes(action)) return savedNumber(value, fallback, 45, 180);
+  if (action === "hover") return savedNumber(value, fallback, 1, 5);
+  if (action === "repeat_start") return savedNumber(value, fallback, 2, 5);
   if (action === "led") {
-    const colours = [[255, 89, 100], [255, 209, 102], [6, 214, 160], [76, 201, 240], [179, 136, 255]];
-    return colours[Math.floor(Math.random() * colours.length)];
+    if (!Array.isArray(value) || value.length !== 3) return fallback;
+    return value.map((channel, index) => savedNumber(channel, fallback[index], 0, 255));
+  }
+  if (action === "flip") return ["front", "back", "left", "right"].includes(value) ? value : fallback;
+  if (action === "sound_sequence") return ["success", "warning", "error"].includes(value) ? value : fallback;
+  if (action === "buzzer") {
+    const input = value && typeof value === "object" ? value : {};
+    return {
+      frequency: savedNumber(input.frequency, fallback.frequency, 200, 1200),
+      duration: savedNumber(input.duration, fallback.duration, 100, 2000),
+    };
+  }
+  if (["square", "triangle", "circle", "sway"].includes(action)) {
+    const input = value && typeof value === "object" ? value : {};
+    return {
+      direction: ["left", "right"].includes(input.direction) ? input.direction : fallback.direction,
+      speed: savedNumber(input.speed, fallback.speed, 25, 60),
+      duration: savedNumber(input.duration, fallback.duration, 0.5, 2),
+    };
+  }
+  if (action === "avoid_wall") {
+    const input = value && typeof value === "object" ? value : {};
+    return {
+      distance: savedNumber(input.distance, fallback.distance, 20, 100),
+      timeout: savedNumber(input.timeout, fallback.timeout, 2, 10),
+    };
+  }
+  if (action === "if_wall") {
+    const input = value && typeof value === "object" ? value : {};
+    const reaction = ["turn_left", "turn_right", "hover", "land"].includes(input.reaction)
+      ? input.reaction : fallback.reaction;
+    return {
+      distance: savedNumber(input.distance, fallback.distance, 20, 100),
+      reaction,
+      reaction_value: reaction === "land" ? null : savedNumber(input.reaction_value, reaction === "hover" ? 2 : 90, reaction === "hover" ? 1 : 45, reaction === "hover" ? 5 : 180),
+    };
+  }
+  if (action === "if_height") {
+    const input = value && typeof value === "object" ? value : {};
+    const reaction = ["land", "hover", "up", "down"].includes(input.reaction)
+      ? input.reaction : fallback.reaction;
+    return {
+      comparison: ["above", "below"].includes(input.comparison) ? input.comparison : fallback.comparison,
+      height: savedNumber(input.height, fallback.height, 30, 150),
+      reaction,
+      reaction_value: reaction === "land" ? null : savedNumber(input.reaction_value, reaction === "hover" ? 2 : 40, reaction === "hover" ? 1 : 20, reaction === "hover" ? 5 : 60),
+    };
+  }
+  if (action === "go_power") {
+    const input = value && typeof value === "object" ? value : {};
+    return {
+      direction: ["forward", "backward", "left", "right", "up", "down"].includes(input.direction)
+        ? input.direction : fallback.direction,
+      power: savedNumber(input.power, fallback.power, 20, 70),
+      duration: savedNumber(input.duration, fallback.duration, 0.5, 3),
+    };
   }
   return null;
 }
+
+function loadSavedProgram() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROGRAM_STORAGE_KEY) || "null");
+    const steps = Array.isArray(saved) ? saved : saved && Array.isArray(saved.steps) ? saved.steps : [];
+    program = steps.slice(0, 30).flatMap((step) => {
+      if (!step || typeof step !== "object") return [];
+      const def = BLOCK_BY_ID[step.defId];
+      if (!def || step.action !== def.action) return [];
+      const sourceLevel = Math.max(def.minLevel, Math.min(5, Number(step.sourceLevel) || def.minLevel));
+      return [{ defId: def.id, action: def.action, value: safeSavedValue(def, step.value), sourceLevel }];
+    });
+  } catch (error) {
+    program = [];
+  }
+  programStorageReady = true;
+}
+
+function saveProgram() {
+  if (!programStorageReady) return;
+  const status = $("saveStatus");
+  try {
+    localStorage.setItem(PROGRAM_STORAGE_KEY, JSON.stringify({ version: 1, updatedAt: Date.now(), steps: program }));
+    status.textContent = "SAVED ON THIS DEVICE";
+    status.classList.remove("save-error");
+  } catch (error) {
+    status.textContent = "SAVING UNAVAILABLE";
+    status.classList.add("save-error");
+  }
+}
+
+function addBlock(defId, insertAt = program.length) {
+  if (program.length >= 30) return toast("Your flight plan is full (30 blocks max).");
+  const def = BLOCK_BY_ID[defId];
+  if (!def || def.minLevel > level) return;
+  const step = { defId, action: def.action, value: defaultValue(def), sourceLevel: level };
+  const insertionIndex = Math.max(0, Math.min(insertAt, program.length));
+  program.splice(insertionIndex, 0, step);
+  renderProgram();
+  showConnectionFeedback(insertionIndex);
+  toast(`${def.label} connected`);
+}
+
+function numberField(label, value, min, max, step, unit, onChange) {
+  const field = document.createElement("label");
+  field.className = "inline-field";
+  const text = document.createElement("span");
+  text.textContent = label;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.value = value;
+  input.min = min;
+  input.max = max;
+  input.step = step;
+  input.inputMode = "decimal";
+  input.addEventListener("change", () => onChange(Math.max(min, Math.min(max, Number(input.value) || min))));
+  field.append(text, input);
+  if (unit) {
+    const suffix = document.createElement("span");
+    suffix.textContent = unit;
+    field.append(suffix);
+  }
+  return field;
+}
+
+function selectField(label, value, options, onChange) {
+  const field = document.createElement("label");
+  field.className = "inline-field";
+  if (label) {
+    const text = document.createElement("span");
+    text.textContent = label;
+    field.append(text);
+  }
+  const select = document.createElement("select");
+  options.forEach(([optionValue, optionLabel]) => {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = optionLabel;
+    option.selected = String(optionValue) === String(value);
+    select.append(option);
+  });
+  select.addEventListener("change", () => onChange(select.value));
+  field.append(select);
+  return field;
+}
+
+function editStep(index, update) {
+  if (!program[index]) return;
+  update(program[index]);
+  renderProgram();
+}
+
+function appendStepFields(container, step, index) {
+  const action = step.action;
+  const configurable = step.sourceLevel >= 3;
+  if (["forward", "back", "left", "right", "up", "down"].includes(action) && configurable) {
+    container.append(numberField("distance", step.value, 20, 150, 1, "cm", (value) => editStep(index, (item) => { item.value = value; })));
+  } else if (["turn_left", "turn_right"].includes(action) && configurable) {
+    container.append(numberField("angle", step.value, 45, 180, 15, "°", (value) => editStep(index, (item) => { item.value = value; })));
+  } else if (action === "hover" && configurable) {
+    container.append(numberField("for", step.value, 1, 5, 1, "sec", (value) => editStep(index, (item) => { item.value = value; })));
+  } else if (action === "repeat_start" && configurable) {
+    container.append(numberField("", step.value, 2, 5, 1, "times", (value) => editStep(index, (item) => { item.value = value; })));
+  } else if (action === "led" && configurable) {
+    const field = document.createElement("label");
+    field.className = "inline-field colour-field";
+    field.innerHTML = "<span>colour</span>";
+    const input = document.createElement("input");
+    input.type = "color";
+    input.value = "#" + step.value.map((channel) => Math.round(channel).toString(16).padStart(2, "0")).join("");
+    input.addEventListener("change", () => editStep(index, (item) => {
+      item.value = [1, 3, 5].map((start) => parseInt(input.value.slice(start, start + 2), 16));
+    }));
+    field.append(input);
+    container.append(field);
+  } else if (action === "buzzer") {
+    container.append(selectField("note", step.value.frequency, [[262, "C4"], [330, "E4"], [392, "G4"], [523, "C5"], [659, "E5"], [784, "G5"]],
+      (value) => editStep(index, (item) => { item.value.frequency = Number(value); })));
+    container.append(numberField("for", step.value.duration, 100, 2000, 100, "ms", (value) => editStep(index, (item) => { item.value.duration = value; })));
+  } else if (action === "sound_sequence") {
+    container.append(selectField("", step.value, [["success", "success"], ["warning", "warning"], ["error", "error"]],
+      (value) => editStep(index, (item) => { item.value = value; })));
+  } else if (["square", "triangle", "circle", "sway"].includes(action)) {
+    container.append(selectField("", step.value.direction, [["right", "clockwise"], ["left", "counter-clockwise"]],
+      (value) => editStep(index, (item) => { item.value.direction = value; })));
+  } else if (action === "avoid_wall") {
+    container.append(numberField("stop at", step.value.distance, 20, 100, 10, "cm", (value) => editStep(index, (item) => { item.value.distance = value; })));
+    container.append(numberField("timeout", step.value.timeout, 2, 10, 1, "sec", (value) => editStep(index, (item) => { item.value.timeout = value; })));
+  } else if (action === "if_wall") {
+    container.append(numberField("closer than", step.value.distance, 20, 100, 10, "cm", (value) => editStep(index, (item) => { item.value.distance = value; })));
+    container.append(selectField("then", step.value.reaction,
+      [["turn_left", "turn left"], ["turn_right", "turn right"], ["hover", "hover"], ["land", "land"]],
+      (value) => editStep(index, (item) => {
+        item.value.reaction = value;
+        item.value.reaction_value = value === "hover" ? 2 : value === "land" ? null : 90;
+      })));
+  } else if (action === "if_height") {
+    container.append(selectField("if", step.value.comparison, [["above", "above"], ["below", "below"]],
+      (value) => editStep(index, (item) => { item.value.comparison = value; })));
+    container.append(numberField("height", step.value.height, 30, 150, 10, "cm", (value) => editStep(index, (item) => { item.value.height = value; })));
+    container.append(selectField("then", step.value.reaction,
+      [["land", "land"], ["hover", "hover"], ["up", "fly up"], ["down", "fly down"]],
+      (value) => editStep(index, (item) => {
+        item.value.reaction = value;
+        item.value.reaction_value = value === "land" ? null : value === "hover" ? 2 : 40;
+      })));
+  } else if (action === "go_power") {
+    container.append(selectField("", step.value.direction,
+      [["forward", "forward"], ["backward", "backward"], ["left", "left"], ["right", "right"], ["up", "up"], ["down", "down"]],
+      (value) => editStep(index, (item) => { item.value.direction = value; })));
+    container.append(numberField("power", step.value.power, 20, 70, 5, "%", (value) => editStep(index, (item) => { item.value.power = value; })));
+    container.append(numberField("for", step.value.duration, 0.5, 3, 0.5, "sec", (value) => editStep(index, (item) => { item.value.duration = value; })));
+  }
+}
+
+/* ---------------- progressive workspace ---------------- */
 
 function renderProgram() {
   const list = $("programList");
   list.innerHTML = "";
   $("programEmpty").classList.toggle("hidden", program.length > 0);
-  const runningProgIdx = runningStep !== null && flatMap[runningStep - 1] !== undefined
-    ? flatMap[runningStep - 1] : null;
+  $("blockCount").textContent = `${program.length} / 30 BLOCKS`;
+  const runningProgIdx = runningStep !== null && flatMap[runningStep - 1] !== undefined ? flatMap[runningStep - 1] : null;
   let depth = 0;
-  program.forEach((step, i) => {
+
+  program.forEach((step, index) => {
+    const def = BLOCK_BY_ID[step.defId] || BLOCK_DEFS.find((item) => item.action === step.action);
+    if (!def) return;
     if (step.action === "repeat_end") depth = Math.max(0, depth - 1);
-    const li = document.createElement("li");
-    if (runningProgIdx === i) li.classList.add("running");
-    if (depth > 0 && step.action !== "repeat_start") li.classList.add("nested");
+    const category = categoryFor(def.category);
+    const item = document.createElement("li");
+    item.className = "program-block";
+    item.style.setProperty("--block-colour", category.colour);
+    item.dataset.index = index;
+    item.draggable = true;
+    item.classList.toggle("running", runningProgIdx === index);
+    item.classList.toggle("nested", depth > 0 && step.action !== "repeat_start");
+    item.classList.toggle("is-picture", step.sourceLevel === 1);
+    item.classList.toggle("repeat-cap", step.action === "repeat_start" || step.action === "repeat_end");
     if (step.action === "repeat_start") depth += 1;
-    const num = document.createElement("span");
-    num.className = "num";
-    num.textContent = i + 1;
-    const lbl = document.createElement("span");
-    lbl.className = "lbl";
-    lbl.textContent = step.label;
-    li.append(num, lbl);
-    [["▲", () => moveStep(i, -1)], ["▼", () => moveStep(i, 1)],
-     ["✖️", () => { program.splice(i, 1); renderProgram(); }]].forEach(([txt, fn]) => {
-      const btn = document.createElement("button");
-      btn.textContent = txt;
-      btn.addEventListener("click", fn);
-      li.append(btn);
+
+    const drag = document.createElement("span");
+    drag.className = "drag-handle";
+    drag.textContent = "⠿";
+    drag.setAttribute("aria-label", "Hold and drag to reorder this block");
+    drag.setAttribute("role", "button");
+    drag.title = "Hold and drag to reorder";
+    const icon = document.createElement("span");
+    icon.className = "program-block-icon";
+    icon.textContent = def.icon;
+    if (def.colour) icon.style.color = `rgb(${step.value.join(",")})`;
+    const main = document.createElement("span");
+    main.className = "program-block-main";
+    const title = document.createElement("strong");
+    title.className = "block-title";
+    title.textContent = def.label;
+    const fields = document.createElement("span");
+    fields.className = "program-fields";
+    appendStepFields(fields, step, index);
+    main.append(title, fields);
+    const source = document.createElement("span");
+    source.className = "source-level";
+    source.textContent = `L${step.sourceLevel}`;
+    source.title = `Added from level ${step.sourceLevel}`;
+
+    const controls = document.createElement("span");
+    controls.className = "program-controls";
+    [["↑", "Move block up", () => moveStep(index, -1)], ["↓", "Move block down", () => moveStep(index, 1)],
+      ["×", "Delete block", () => { program.splice(index, 1); renderProgram(); }]].forEach(([text, label, action]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = text;
+      button.setAttribute("aria-label", label);
+      button.addEventListener("click", action);
+      controls.append(button);
     });
-    list.append(li);
+    item.append(drag, icon, main, source, controls);
+    item.setAttribute("aria-label", `${def.label}, level ${step.sourceLevel}`);
+    item.addEventListener("dragstart", (event) => {
+      if (["INPUT", "SELECT", "BUTTON"].includes(event.target.tagName) || event.target.closest(".drag-handle")) {
+        return event.preventDefault();
+      }
+      event.dataTransfer.setData("text/program-index", String(index));
+      event.dataTransfer.effectAllowed = "move";
+      item.classList.add("dragging");
+    });
+    item.addEventListener("dragend", () => {
+      item.classList.remove("dragging");
+      clearDropFeedback();
+    });
+    item.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      clearDropFeedback();
+      const rect = item.getBoundingClientRect();
+      const placeBefore = event.clientY < rect.top + rect.height / 2;
+      item.dataset.dropPosition = placeBefore ? "before" : "after";
+      item.classList.add(placeBefore ? "drop-before" : "drop-after");
+    });
+    item.addEventListener("dragleave", () => item.classList.remove("drop-before", "drop-after"));
+    item.addEventListener("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const insertionIndex = index + (item.dataset.dropPosition === "after" ? 1 : 0);
+      clearDropFeedback();
+      handleProgramDrop(event, insertionIndex);
+    });
+    enablePointerReorder(item, drag, index);
+    list.append(item);
   });
   renderPython();
+  saveProgram();
 }
 
-function moveStep(i, dir) {
-  const j = i + dir;
-  if (j < 0 || j >= program.length) return;
-  [program[i], program[j]] = [program[j], program[i]];
-  renderProgram();
+let pointerReorder = null;
+let palettePointerDrag = null;
+
+function clearDropFeedback() {
+  document.querySelectorAll("#programList .drop-before, #programList .drop-after")
+    .forEach((item) => item.classList.remove("drop-before", "drop-after"));
+  $("programList").classList.remove("drop-empty");
+  document.querySelector(".workspace-pane")?.classList.remove("is-drop-target");
 }
 
-document.querySelectorAll(".palette .block").forEach((b) =>
-  b.addEventListener("click", () => {
-    if (program.length >= 30) return toast("Program is full (30 blocks max)");
-    const action = b.dataset.block;
-    const value = blockValue(action);
-    program.push({ action, value, label: labelFor(action, value) });
-    renderProgram();
-  })
-);
+function workspaceInsertionIndex(clientX, clientY) {
+  clearDropFeedback();
+  const workspace = document.querySelector(".workspace-pane");
+  const workspaceRect = workspace.getBoundingClientRect();
+  const insideWorkspace = clientX >= workspaceRect.left && clientX <= workspaceRect.right
+    && clientY >= workspaceRect.top && clientY <= workspaceRect.bottom;
+  if (!insideWorkspace) return null;
 
-$("clearBtn").addEventListener("click", () => { program = []; renderProgram(); });
+  workspace.classList.add("is-drop-target");
+  const list = $("programList");
+  const blocks = [...list.querySelectorAll(".program-block")];
+  if (!blocks.length) {
+    list.classList.add("drop-empty");
+    return 0;
+  }
 
-function flattenProgram() {
-  /* Expands repeat blocks into a flat step list the server understands.
-     Returns {steps, map} or {error}. One level of repeats only. */
-  const steps = [], map = [];
-  let block = null, count = 0;
-  for (let i = 0; i < program.length; i++) {
-    const { action, value } = program[i];
-    if (action === "repeat_start") {
-      if (block !== null) return { error: "One repeat at a time! Finish it with 🏁 first." };
-      block = []; count = value;
-    } else if (action === "repeat_end") {
-      if (block === null) return { error: "🏁 End repeat needs a 🔁 Repeat before it." };
-      for (let r = 0; r < count; r++) block.forEach(([s, idx]) => { steps.push(s); map.push(idx); });
-      block = null;
-    } else if (block !== null) {
-      block.push([{ action, value }, i]);
-    } else {
-      steps.push({ action, value }); map.push(i);
+  for (const block of blocks) {
+    const rect = block.getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) {
+      block.classList.add("drop-before");
+      return Number(block.dataset.index);
     }
   }
-  if (block !== null) return { error: "Your 🔁 Repeat needs a 🏁 End repeat block." };
+
+  blocks.at(-1).classList.add("drop-after");
+  return program.length;
+}
+
+function updatePointerDrop(clientX, clientY) {
+  if (!pointerReorder) return;
+  pointerReorder.targetIndex = workspaceInsertionIndex(clientX, clientY);
+}
+
+function finishPointerReorder(cancelled = false) {
+  const state = pointerReorder;
+  if (!state) return;
+  pointerReorder = null;
+  clearDropFeedback();
+  state.item.classList.remove("touch-dragging");
+  document.body.classList.remove("touch-reordering");
+  if (state.handle.hasPointerCapture?.(state.pointerId)) {
+    state.handle.releasePointerCapture(state.pointerId);
+  }
+  if (!cancelled && state.active && state.targetIndex !== null) {
+    reorderProgram(state.fromIndex, state.targetIndex);
+  }
+}
+
+function createPaletteDragGhost(button) {
+  const rect = button.getBoundingClientRect();
+  const ghost = button.cloneNode(true);
+  ghost.classList.add("block-drag-ghost");
+  ghost.disabled = true;
+  ghost.removeAttribute("title");
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.style.width = `${Math.min(rect.width, 320)}px`;
+  document.body.append(ghost);
+  return ghost;
+}
+
+function positionPaletteDrag(clientX, clientY) {
+  if (!palettePointerDrag?.ghost) return;
+  palettePointerDrag.lastX = clientX;
+  palettePointerDrag.lastY = clientY;
+  palettePointerDrag.ghost.style.left = `${clientX}px`;
+  palettePointerDrag.ghost.style.top = `${clientY - 46}px`;
+  palettePointerDrag.targetIndex = workspaceInsertionIndex(clientX, clientY);
+  palettePointerDrag.ghost.classList.toggle("can-connect", palettePointerDrag.targetIndex !== null);
+}
+
+function finishPalettePointerDrag(cancelled = false) {
+  const state = palettePointerDrag;
+  if (!state) return;
+  palettePointerDrag = null;
+  clearDropFeedback();
+  state.button.classList.remove("pointer-drag-source");
+  state.ghost?.remove();
+  document.body.classList.remove("block-dragging");
+  if (state.button.hasPointerCapture?.(state.pointerId)) {
+    state.button.releasePointerCapture(state.pointerId);
+  }
+  if (state.active) state.button._ignoreNextClick = true;
+  if (!cancelled && state.active && state.targetIndex !== null) {
+    addBlock(state.defId, state.targetIndex);
+  } else if (!cancelled && state.active) {
+    toast("Drop the block inside My flight plan.", 2200);
+  }
+}
+
+function autoScrollEditor(clientX, clientY, amount = 18) {
+  const stackedEditor = window.matchMedia("(max-width: 900px)").matches;
+  let scroller = $("codePage");
+
+  if (!stackedEditor) {
+    const workspace = document.querySelector(".workspace-pane");
+    const workspaceRect = workspace?.getBoundingClientRect();
+    scroller = workspaceRect && clientX >= workspaceRect.left
+      ? workspace
+      : document.querySelector(".toolbox-pane .palette");
+  }
+
+  if (!scroller) return;
+  const rect = scroller.getBoundingClientRect();
+  const visibleTop = Math.max(0, rect.top);
+  const visibleBottom = Math.min(window.innerHeight, rect.bottom);
+  const edgeZone = Math.min(96, Math.max(48, (visibleBottom - visibleTop) * 0.18));
+
+  if (clientY < visibleTop + edgeZone) scroller.scrollBy({ top: -amount, behavior: "auto" });
+  else if (clientY > visibleBottom - edgeZone) scroller.scrollBy({ top: amount, behavior: "auto" });
+}
+
+function enablePalettePointerDrag(button, def) {
+  button.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    palettePointerDrag = {
+      pointerId: event.pointerId,
+      defId: def.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      targetIndex: null,
+      active: false,
+      button,
+      ghost: null,
+    };
+    button.setPointerCapture?.(event.pointerId);
+  });
+
+  button.addEventListener("pointermove", (event) => {
+    if (!palettePointerDrag || palettePointerDrag.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - palettePointerDrag.startX, event.clientY - palettePointerDrag.startY);
+    if (!palettePointerDrag.active && distance < 6) return;
+    if (!palettePointerDrag.active) {
+      palettePointerDrag.active = true;
+      palettePointerDrag.ghost = createPaletteDragGhost(button);
+      button.classList.add("pointer-drag-source");
+      document.body.classList.add("block-dragging");
+    }
+    autoScrollEditor(event.clientX, event.clientY);
+    positionPaletteDrag(event.clientX, event.clientY);
+    event.preventDefault();
+  }, { passive: false });
+
+  button.addEventListener("pointerup", (event) => {
+    if (palettePointerDrag?.pointerId === event.pointerId) finishPalettePointerDrag(false);
+  });
+  button.addEventListener("pointercancel", (event) => {
+    if (palettePointerDrag?.pointerId === event.pointerId) finishPalettePointerDrag(true);
+  });
+}
+
+function showConnectionFeedback(index) {
+  const item = document.querySelector(`#programList .program-block[data-index="${index}"]`);
+  if (!item) return;
+  item.classList.add("just-connected");
+  const badge = document.createElement("span");
+  badge.className = "connection-click";
+  badge.textContent = "SNAP!";
+  badge.setAttribute("aria-hidden", "true");
+  item.append(badge);
+  setTimeout(() => {
+    item.classList.remove("just-connected");
+    badge.remove();
+  }, reducedMotion.matches ? 250 : 720);
+}
+
+function enablePointerReorder(item, handle, index) {
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    pointerReorder = {
+      pointerId: event.pointerId,
+      fromIndex: index,
+      targetIndex: index,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+      item,
+      handle,
+    };
+    handle.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+
+  handle.addEventListener("pointermove", (event) => {
+    if (!pointerReorder || pointerReorder.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - pointerReorder.startX, event.clientY - pointerReorder.startY);
+    if (!pointerReorder.active && distance < 6) return;
+    pointerReorder.active = true;
+    pointerReorder.item.classList.add("touch-dragging");
+    document.body.classList.add("touch-reordering");
+    autoScrollEditor(event.clientX, event.clientY, 14);
+    updatePointerDrop(event.clientX, event.clientY);
+    event.preventDefault();
+  }, { passive: false });
+
+  handle.addEventListener("pointerup", (event) => {
+    if (pointerReorder?.pointerId === event.pointerId) finishPointerReorder(false);
+  });
+  handle.addEventListener("pointercancel", (event) => {
+    if (pointerReorder?.pointerId === event.pointerId) finishPointerReorder(true);
+  });
+}
+
+function reorderProgram(fromIndex, insertionIndex) {
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= program.length) return;
+  const [step] = program.splice(fromIndex, 1);
+  const adjustedIndex = fromIndex < insertionIndex ? insertionIndex - 1 : insertionIndex;
+  const finalIndex = Math.max(0, Math.min(adjustedIndex, program.length));
+  program.splice(finalIndex, 0, step);
+  renderProgram();
+  if (finalIndex !== fromIndex) showConnectionFeedback(finalIndex);
+}
+
+function handleProgramDrop(event, targetIndex) {
+  const defId = event.dataTransfer.getData("text/block-id");
+  if (defId) return addBlock(defId, targetIndex);
+  const fromText = event.dataTransfer.getData("text/program-index");
+  if (fromText === "") return;
+  const from = Number(fromText);
+  if (!Number.isInteger(from) || from < 0 || from >= program.length) return;
+  reorderProgram(from, targetIndex);
+}
+
+function moveStep(index, direction) {
+  const target = index + direction;
+  if (target < 0 || target >= program.length) return;
+  [program[index], program[target]] = [program[target], program[index]];
+  renderProgram();
+  showConnectionFeedback(target);
+}
+
+$("programList").addEventListener("dragover", (event) => event.preventDefault());
+$("programList").addEventListener("drop", (event) => {
+  event.preventDefault();
+  handleProgramDrop(event, program.length);
+});
+
+$("clearBtn").addEventListener("click", () => {
+  program = [];
+  renderProgram();
+});
+
+function flattenProgram() {
+  /* Repeat markers are expanded for the server. Sensor decisions stay as
+     executable steps because they need live readings from the real drone. */
+  const steps = [], map = [];
+  let repeatBlock = null, count = 0;
+  for (let index = 0; index < program.length; index++) {
+    const { action, value } = program[index];
+    if (action === "repeat_start") {
+      if (repeatBlock !== null) return { error: "Finish one repeat before starting another." };
+      repeatBlock = [];
+      count = value;
+    } else if (action === "repeat_end") {
+      if (repeatBlock === null) return { error: "End repeat needs a repeat block before it." };
+      for (let repeat = 0; repeat < count; repeat++) {
+        repeatBlock.forEach(([step, sourceIndex]) => { steps.push(step); map.push(sourceIndex); });
+      }
+      repeatBlock = null;
+    } else if (repeatBlock !== null) {
+      repeatBlock.push([{ action, value }, index]);
+    } else {
+      steps.push({ action, value });
+      map.push(index);
+    }
+  }
+  if (repeatBlock !== null) return { error: "Your repeat block needs an end repeat block." };
   if (!steps.length) return { error: "Add some blocks first!" };
-  if (steps.length > 30) return { error: "Too many steps after repeats (30 max)." };
+  if (steps.length > 30) return { error: "That becomes more than 30 steps after repeating." };
   return { steps, map };
 }
 
 $("runBtn").addEventListener("click", async () => {
   if (!token || !droneId) return showPicker();
   const flat = flattenProgram();
-  if (flat.error) return toast(flat.error);
+  if (flat.error) return toast(flat.error, 2800);
   flatMap = flat.map;
-  const { ok } = await api("/api/run", { steps: flat.steps, token, drone_id: droneId });
-  if (ok) toast("▶️ Program running!");
+  const { ok, data } = await api("/api/run", { steps: flat.steps, token, drone_id: droneId });
+  if (ok) toast("Flight plan is running!");
+  else if (data.error === "bad_program") toast("One of those blocks is not safe to run.", 2600);
 });
 
-/* ---------------- Python view (level 5) ---------------- */
+/* ---------------- progressive Python view ---------------- */
+
+function reactionPython(reaction, value) {
+  if (reaction === "land") return "drone.land()";
+  if (reaction === "hover") return `drone.hover(${value || 2})`;
+  if (reaction === "turn_left") return `drone.turn_left(${value || 90})`;
+  if (reaction === "turn_right") return `drone.turn_right(${value || 90})`;
+  if (reaction === "up" || reaction === "down") return `drone.go("${reaction}", 40, 1)`;
+  return "pass";
+}
 
 function pythonFor(action, value) {
   switch (action) {
-    case "takeoff": return "drone.takeoff()";
-    case "land": return "drone.land()";
-    case "forward": return `drone.move_forward(${value}, "cm")`;
-    case "back": return `drone.move_backward(${value}, "cm")`;
-    case "left": return `drone.move_left(${value}, "cm")`;
-    case "right": return `drone.move_right(${value}, "cm")`;
-    case "up": return `drone.go("up", 40, 1.0)`;
-    case "down": return `drone.go("down", 40, 1.0)`;
-    case "turn_left": return `drone.turn_left(${value})`;
-    case "turn_right": return `drone.turn_right(${value})`;
-    case "hover": return `drone.hover(${value})`;
-    case "flip": return `drone.flip("${value}")`;
-    case "led": return `drone.set_drone_LED(${value.join(", ")}, 255)`;
-    default: return null;
+    case "takeoff": return ["drone.takeoff()"];
+    case "land": return ["drone.land()"];
+    case "forward": return [`drone.move_forward(${value}, "cm")`];
+    case "back": return [`drone.move_backward(${value}, "cm")`];
+    case "left": return [`drone.move_left(${value}, "cm")`];
+    case "right": return [`drone.move_right(${value}, "cm")`];
+    case "up": return [`drone.go("up", 40, ${Math.max(0.5, value / 50).toFixed(1)})`];
+    case "down": return [`drone.go("down", 40, ${Math.max(0.5, value / 50).toFixed(1)})`];
+    case "turn_left": return [`drone.turn_left(${value})`];
+    case "turn_right": return [`drone.turn_right(${value})`];
+    case "hover": return [`drone.hover(${value})`];
+    case "flip": return [`drone.flip("${value}")`];
+    case "led": return [`drone.set_drone_LED(${value.join(", ")}, 100)`];
+    case "led_off": return ["drone.drone_LED_off()"];
+    case "ping": return ["drone.ping()"];
+    case "buzzer": return [`drone.drone_buzzer(${value.frequency}, ${value.duration})`];
+    case "sound_sequence": return [`drone.drone_buzzer_sequence("${value}")`];
+    case "circle": return [`drone.circle(${value.speed}, ${value.direction === "right" ? 1 : -1})`];
+    case "square":
+    case "triangle":
+    case "sway": return [`drone.${action}(${value.speed}, ${value.duration}, ${value.direction === "right" ? 1 : -1})`];
+    case "avoid_wall": return [`drone.avoid_wall(timeout=${value.timeout}, distance=${value.distance})`];
+    case "go_power": return [`drone.go("${value.direction}", ${value.power}, ${value.duration})`];
+    case "if_wall": return [`if drone.detect_wall(${value.distance}):`, `    ${reactionPython(value.reaction, value.reaction_value)}`];
+    case "if_height": {
+      const symbol = value.comparison === "above" ? ">" : "<";
+      return [`if drone.get_height("cm") ${symbol} ${value.height}:`, `    ${reactionPython(value.reaction, value.reaction_value)}`];
+    }
+    default: return [];
   }
 }
 
@@ -345,13 +1151,12 @@ function renderPython() {
   let indent = "";
   program.forEach(({ action, value }) => {
     if (action === "repeat_start") {
-      lines.push(`for i in range(${value}):`);
-      indent = "    ";
+      lines.push(`${indent}for _ in range(${value}):`);
+      indent += "    ";
     } else if (action === "repeat_end") {
-      indent = "";
+      indent = indent.slice(0, -4);
     } else {
-      const code = pythonFor(action, value);
-      if (code) lines.push(indent + code);
+      pythonFor(action, value).forEach((line) => lines.push(indent + line));
     }
   });
   lines.push("drone.close()");
@@ -361,9 +1166,17 @@ function renderPython() {
 /* ---------------- status polling ---------------- */
 
 async function poll() {
+  clearTimeout(pollTimer);
+  if (!navigator.onLine) {
+    setHubConnection(false);
+    pollTimer = setTimeout(poll, 2000);
+    return;
+  }
   try {
-    const res = await fetch("/api/status");
+    const res = await fetchWithTimeout("/api/status", { cache: "no-store" }, 3000);
+    if (!res.ok) throw new Error(`Hub status ${res.status}`);
     const s = await res.json();
+    setHubConnection(true);
     lastStatus = s;
     const d = myDrone();
 
@@ -414,13 +1227,25 @@ async function poll() {
     if (showMap && d.pose) updateRadarPose(d.pose, d.led);
     syncRadarLoop();
   } catch (err) {
-    $("modeChip").textContent = "NO LINK";
-    document.body.classList.remove("flying");
-    document.body.classList.add("radar-stale");
-    stopRadarLoop();
+    setHubConnection(false);
   }
-  setTimeout(poll, 1000);
+  pollTimer = setTimeout(poll, hubConnected ? 1000 : 2000);
 }
+
+$("retryConnectionBtn").addEventListener("click", () => {
+  if (!navigator.onLine) {
+    toast("This device is offline. Rejoin the classroom Wi-Fi, then try again.", 2800);
+    return;
+  }
+  $("modeChip").textContent = "CONNECTING";
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(poll, 0);
+});
+window.addEventListener("online", () => {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(poll, 0);
+});
+window.addEventListener("offline", () => setHubConnection(false));
 
 /* ---------------- practice map ---------------- */
 
@@ -829,5 +1654,7 @@ if (window.ResizeObserver) {
 }
 
 initAltitudeGauge();
+document.querySelectorAll(HUB_CONTROL_SELECTOR).forEach((button) => { button.disabled = true; });
+loadSavedProgram();
 applyLevel();
 poll();

@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Drone Pilot — CoDrone EDU",
+  "short_name": "Drone Pilot",
+  "description": "Build block-code flight plans and safely control CoDrone EDU drones through the classroom Drone Hub.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070d18",
+  "theme_color": "#070d18",
+  "categories": ["education", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -18,10 +18,11 @@ iPad (Safari) --> Wi-Fi --> Hub laptop --> USB controller --> drone
 
 - **FLY tab** — big friendly buttons: take off, land, arrows to move, turn, flip,
   and colour the drone's lights.
-- **CODE tab** — tap blocks to build a little program, press RUN, watch the drone
-  do it. Five difficulty levels (like Ozobot): Level 1 is picture-only blocks for
-  pre-readers; higher levels add more blocks, choosable numbers, repeat loops, and
-  at Level 5 a live view of the real Python code their blocks create.
+- **CODE tab** — build a flight in an Ozobot-style block workspace with coloured
+  categories and five cumulative difficulty levels. Level 1 is picture-first;
+  Levels 2–3 add sequences, loops, sounds, tricks and adjustable controls; Level 4
+  adds real front/bottom range sensing; and Level 5 adds power flight plus a live
+  view of the Python code. Kids can switch levels and mix those blocks in one plan.
 - **Practice Mode** — with no drones plugged in you get SIX virtual drones flying
   around on-screen maps, so a whole class can code and fly with zero hardware.
 
@@ -71,8 +72,17 @@ who's flying, what the drone is doing), plus two teacher-only powers:
 
 ### Make it feel like a real app (one time per iPad)
 
-Open the page in Safari → tap **Share** → **Add to Home Screen**. A Drone Pilot
-icon appears and opens full screen like a proper app.
+Tap **APP MODE** inside Drone Pilot for the built-in iPad guide, or in Safari tap
+**Share** → **More** → **Add to Home Screen**. Turn on **Open as Web App**, tap
+**Add**, then open Drone Pilot from its new Home Screen icon. It opens in its own
+full-screen window without Safari controls. Drone Pilot automatically saves the
+current block flight plan on that iPad. If the Hub connection drops, the editor
+keeps the saved plan visible but locks every flight control until it reconnects.
+
+On a secure HTTPS deployment (and on `localhost` during development), the app shell
+is also cached for offline opening. A normal classroom LAN address uses HTTP, so iPadOS
+still provides the Home Screen app experience but the Hub must be running to open a
+fresh session. Real flying always requires the Hub laptop and USB controller.
 
 To practise without any drone at all, use **Start Practice Mode.bat**.
 
@@ -91,6 +101,9 @@ Some school Wi-Fi blocks devices from talking to each other. Easy fix:
   then restart the hub.
 - **Page loads but buttons say someone else has the controls** — tap
   "TAKE THE CONTROLS" and type a name. Last person to take them is the pilot.
+- **The red "Drone Hub offline" banner appears** — the flight plan is safe on the
+  iPad. Check that the Hub window is still open and the iPad is on the same Wi-Fi,
+  then tap **Try again**. Flight controls unlock only after the Hub replies.
 - **Battery low warning** — land and swap the drone battery like normal.
 - **Windows firewall asks a question the first time** — choose **Allow** (it's the
   iPads talking to the laptop on the local network only).
