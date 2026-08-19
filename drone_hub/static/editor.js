@@ -6,7 +6,7 @@
 const EDITOR_STORAGE_KEY = "dronePilotBlocklyV1";
 const OLD_PROGRAM_KEY = "dronePilotProgramV1";
 const EDITOR_LEVEL_HINTS = {
-  1: "Take off, go, turn and set the lights — everything for a first flight.",
+  1: "Take off, go, turn and set the lights. Everything for a first flight.",
   2: "Add sound, timing, loops and flips.",
   3: "Add notes, sounds and flight patterns like circles and squares.",
   4: "Use the front and bottom range sensors to react to the world.",

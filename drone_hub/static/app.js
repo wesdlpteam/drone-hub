@@ -62,7 +62,7 @@ function setHubConnection(connected) {
     stopRadarLoop();
     if (window.DroneEditor) DroneEditor.setRunningStep(null);
   } else if (wasConnected === false) {
-    toast("Drone Hub reconnected — flight controls are ready.", 2600);
+    toast("Drone Hub reconnected. Flight controls are ready.", 2600);
   }
 }
 
@@ -325,7 +325,7 @@ async function poll() {
     const now = $("nowBar");
     if (s.paused) {
       now.classList.remove("hidden");
-      now.textContent = "⏸️ Your teacher has paused flying — eyes up front!";
+      now.textContent = "⏸️ Your teacher has paused flying. Eyes up front!";
       DroneEditor.setRunningStep(null);
     } else if (d && d.current) {
       now.classList.remove("hidden");
