@@ -118,7 +118,13 @@ function renderDroneCards() {
   const box = $("droneCards");
   if (!lastStatus) { box.innerHTML = "<p>Connecting…</p>"; return; }
   box.innerHTML = "";
-  lastStatus.drones.forEach((d) => {
+  // only drones that are turned on (a powered-off drone reads 0 or fails -1)
+  const awake = lastStatus.drones.filter((d) => d.battery > 0);
+  if (!awake.length) {
+    box.innerHTML = "<p>No drones are awake right now. Turn one on and it will pop up here.</p>";
+    return;
+  }
+  awake.forEach((d) => {
     const card = document.createElement("button");
     card.className = "drone-card";
     const battery = d.battery < 0 ? "?" : d.battery + "%";
