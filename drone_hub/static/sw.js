@@ -1,6 +1,6 @@
 "use strict";
 
-const SHELL_CACHE = "drone-pilot-shell-v11";
+const SHELL_CACHE = "drone-pilot-shell-v12";
 const APP_SHELL = [
   "/",
   "/index.html",

@@ -239,13 +239,15 @@ const DroneEditor = {
       console.warn("Blockly JavaScript generator missing; Level 2 run disabled");
     }
     workspace = Blockly.inject("blocklyDiv", {
-      renderer: "zelos",
+      // geras = the official CoDrone Blockly look: value blocks carry a
+      // puzzle tab on the left, statements notch top and bottom
+      renderer: "geras",
       theme: defineTheme(),
       toolbox: DroneBlocksData.toolboxForLevel(editorLevel),
       trashcan: true,
       sounds: false,
       grid: { spacing: 34, length: 34, colour: "#121a38", snap: false },
-      zoom: { controls: true, wheel: true, pinch: true, startScale: 0.8 },
+      zoom: { controls: true, wheel: true, pinch: true, startScale: 1 },
       move: { scrollbars: { horizontal: true, vertical: true }, drag: true, wheel: true },
     });
     restoreWorkspace();
