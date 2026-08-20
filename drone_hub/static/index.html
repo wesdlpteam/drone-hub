@@ -230,33 +230,42 @@
       <div class="topbar-left">
         <span class="rail-levels-label">Levels</span>
         <div class="rail-level-squares" role="group" aria-label="Coding level">
-          <button class="level-btn" data-level="1" aria-label="Level 1: Pictures">1</button>
-          <button class="level-btn" data-level="2" aria-label="Level 2: Sequences">2</button>
-          <button class="level-btn" data-level="3" aria-label="Level 3: Controls">3</button>
-          <button class="level-btn" data-level="4" aria-label="Level 4: Sensors">4</button>
-          <button class="level-btn" data-level="5" aria-label="Level 5: Python">5</button>
+          <button class="level-btn" data-level="1" aria-label="Level 1: Picture blocks">1</button>
+          <button class="level-btn" data-level="2" aria-label="Level 2: All blocks">2</button>
         </div>
         <button id="railCollapseBtn" type="button" aria-label="Hide or show the block menu">&#10094;</button>
+        <div class="pill-group" role="group" aria-label="Flight controls">
+          <button id="runBtn" class="pill-btn pill-run" type="button"><span class="pill-icon">&#9654;</span><span class="pill-label">Run</span></button>
+          <button id="landBtn" class="pill-btn pill-land" type="button"><span class="pill-icon">&#8681;</span><span class="pill-label">Land</span></button>
+          <button id="codeStopBtn" class="pill-btn pill-stop" type="button"><span class="pill-icon">&#9632;</span><span class="pill-label">Stop</span></button>
+        </div>
       </div>
       <span id="levelHint" class="level-hint" aria-live="polite"></span>
       <div class="topbar-right">
         <span id="saveStatus" class="save-status" role="status" aria-live="polite">SAVED ON THIS DEVICE</span>
         <span id="blockCount" class="block-count">0 / 30 STEPS</span>
         <button id="clearBtn" class="btn-mid hardware-key" type="button">CLEAR</button>
-        <button id="runBtn" class="btn-big btn-go hardware-key" type="button"><span class="key-label">EXECUTE PLAN</span><span class="key-value">&#9654; RUN FLIGHT</span></button>
       </div>
     </header>
-    <div id="blocklyDiv" class="blockly-host" aria-label="Block coding workspace"></div>
+    <div class="blockly-stage">
+      <div id="blocklyDiv" class="blockly-host" aria-label="Block coding workspace"></div>
+      <div id="droneConnBox" class="drone-conn-box" aria-live="polite">
+        <span id="droneConnLabel" class="drone-conn-label">no drone connected</span>
+        <button id="droneConnBtn" class="drone-conn-btn" type="button">Connect</button>
+      </div>
+    </div>
     <div id="editorFallback" class="editor-fallback hidden">
       <strong>The coding blocks couldn't load.</strong>
       <span>Pull down to refresh the page. If that doesn't fix it, tell your teacher.</span>
     </div>
-    <div id="pythonPanel" class="python-panel terminal-window hidden">
+    <div id="bottomPanel" class="python-panel terminal-window hidden">
       <div class="terminal-titlebar">
         <span class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="terminal-filename">mission.py</span>
-        <span class="terminal-language">LIVE PYTHON</span>
+        <button id="tabConsole" class="panel-tab" type="button">Console</button>
+        <button id="tabPython" class="panel-tab active" type="button">Python</button>
+        <span class="terminal-language">LIVE</span>
       </div>
+      <pre id="consoleOut" class="hidden" aria-label="Program output"></pre>
       <pre id="pythonCode" aria-label="Python code for this flight plan"></pre>
     </div>
   </div>
@@ -279,8 +288,11 @@
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
 <script src="blockly.min.js"></script>
+<script src="blockly-python.min.js"></script>
+<script src="js-interpreter.js"></script>
 <script src="app.js"></script>
 <script src="blocks-data.js"></script>
+<script src="program-runner.js"></script>
 <script src="editor.js"></script>
 </body>
 </html>

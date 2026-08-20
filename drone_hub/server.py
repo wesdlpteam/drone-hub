@@ -44,7 +44,10 @@ STATIC_FILES = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/qrcode.js": ("qrcode.js", "text/javascript; charset=utf-8"),
     "/blockly.min.js": ("blockly.min.js", "text/javascript; charset=utf-8"),
+    "/blockly-python.min.js": ("blockly-python.min.js", "text/javascript; charset=utf-8"),
+    "/js-interpreter.js": ("js-interpreter.js", "text/javascript; charset=utf-8"),
     "/blocks-data.js": ("blocks-data.js", "text/javascript; charset=utf-8"),
+    "/program-runner.js": ("program-runner.js", "text/javascript; charset=utf-8"),
     "/editor.js": ("editor.js", "text/javascript; charset=utf-8"),
     "/icon.png": ("icon.png", "image/png"),
     "/pwa-icon.svg": ("pwa-icon.svg", "image/svg+xml; charset=utf-8"),
@@ -175,6 +178,10 @@ def step_label(action, value):
         "circle": "Fly a circle", "sway": "Sway side to side",
         "avoid_wall": "Fly until obstacle", "if_wall": "Check front sensor",
         "if_height": "Check height", "go_power": "Power move",
+        "goto": "Fly to a point", "turn_power": "Timed turn",
+        "turn_to": "Turn to heading", "set_rpyt": "Set control",
+        "move_apply": "Move", "keep_distance": "Keep distance",
+        "led_sequence": "Light pattern", "reset_gyro": "Reset gyro",
     }
     label = names.get(action, action)
     if action in ("forward", "back", "left", "right", "up", "down"):
@@ -213,7 +220,9 @@ def validate_step(raw):
                "down", "turn_left", "turn_right", "hover", "flip", "led",
                "led_off", "ping", "buzzer", "sound_sequence", "square",
                "triangle", "circle", "sway", "avoid_wall", "if_wall",
-               "if_height", "go_power"}
+               "if_height", "go_power", "goto", "turn_power", "turn_to",
+               "set_rpyt", "move_apply", "keep_distance", "led_sequence",
+               "reset_gyro"}
     if action not in allowed:
         return None
     if action in ("forward", "back", "left", "right", "up", "down"):
@@ -225,16 +234,78 @@ def validate_step(raw):
     elif action == "flip":
         value = value if value in ("front", "back", "left", "right") else "back"
     elif action == "led":
-        if not (isinstance(value, (list, tuple)) and len(value) == 3):
+        # old shape: [r, g, b]  /  new shape: {rgb, brightness, device}
+        if isinstance(value, dict):
+            rgb = value.get("rgb")
+            if not (isinstance(rgb, (list, tuple)) and len(rgb) == 3):
+                return None
+            value = {"rgb": [int(clamp(v, 0, 255)) for v in rgb],
+                     "brightness": int(clamp(value.get("brightness", 255), 0, 255)),
+                     "device": "controller" if value.get("device") == "controller" else "drone"}
+        elif isinstance(value, (list, tuple)) and len(value) == 3:
+            value = {"rgb": [int(clamp(v, 0, 255)) for v in value],
+                     "brightness": 255, "device": "drone"}
+        else:
             return None
-        value = [int(clamp(v, 0, 255)) for v in value]
+    elif action == "led_off":
+        device = value.get("device") if isinstance(value, dict) else "drone"
+        value = {"device": "controller" if device == "controller" else "drone"}
+    elif action == "led_sequence":
+        if not isinstance(value, dict):
+            return None
+        rgb = value.get("rgb")
+        if not (isinstance(rgb, (list, tuple)) and len(rgb) == 3):
+            return None
+        mode = value.get("mode")
+        value = {"device": "controller" if value.get("device") == "controller" else "drone",
+                 "mode": mode if mode in ("dimming", "fade_in", "fade_out", "blink",
+                                          "double_blink", "rainbow") else "blink",
+                 "rgb": [int(clamp(v, 0, 255)) for v in rgb],
+                 "speed": int(clamp(value.get("speed"), 1, 5))}
     elif action == "buzzer":
         if not isinstance(value, dict):
             return None
-        value = {"frequency": int(clamp(value.get("frequency"), 200, 1200)),
-                 "duration": int(clamp(value.get("duration"), 100, 2000))}
+        value = {"frequency": int(clamp(value.get("frequency"), 100, 4000)),
+                 "duration": int(clamp(value.get("duration"), 100, 3000)),
+                 "device": "controller" if value.get("device") == "controller" else "drone"}
     elif action == "sound_sequence":
-        value = value if value in ("success", "warning", "error") else "success"
+        if isinstance(value, dict):
+            kind = value.get("kind")
+            device = value.get("device")
+        else:
+            kind, device = value, "drone"
+        value = {"kind": kind if kind in ("success", "warning", "error") else "success",
+                 "device": "controller" if device == "controller" else "drone"}
+    elif action == "goto":
+        if not isinstance(value, dict):
+            return None
+        value = {"x": clamp(value.get("x"), -150, 150),
+                 "y": clamp(value.get("y"), -150, 150),
+                 "z": clamp(value.get("z"), 50, 150)}
+    elif action == "turn_power":
+        if not isinstance(value, dict):
+            return None
+        value = {"direction": "right" if value.get("direction") == "right" else "left",
+                 "power": int(clamp(value.get("power"), 20, 70)),
+                 "duration": clamp(value.get("duration"), 0.5, 3)}
+    elif action == "turn_to":
+        value = clamp(value, 0, 359)
+    elif action == "set_rpyt":
+        if not isinstance(value, dict):
+            return None
+        axis = value.get("axis")
+        if axis not in ("roll", "pitch", "yaw", "throttle"):
+            return None
+        value = {"axis": axis, "power": int(clamp(value.get("power"), -30, 30))}
+    elif action == "move_apply":
+        value = clamp(value, 0.2, 3)
+    elif action == "keep_distance":
+        if not isinstance(value, dict):
+            return None
+        value = {"distance": int(clamp(value.get("distance"), 20, 100)),
+                 "timeout": int(clamp(value.get("timeout"), 2, 10))}
+    elif action == "reset_gyro":
+        value = None
     elif action in ("square", "triangle", "circle", "sway"):
         if not isinstance(value, dict):
             return None
@@ -291,19 +362,35 @@ def execute(backend, item):
     elif action == "flip":
         backend.flip("forward" if value == "front" else value)
     elif action == "led":
-        backend.set_led(*value)
+        backend.set_led(*value["rgb"], brightness=value["brightness"], device=value["device"])
     elif action == "led_off":
-        backend.led_off()
+        backend.led_off(device=value["device"] if isinstance(value, dict) else "drone")
+    elif action == "led_sequence":
+        backend.led_sequence(value["device"], value["mode"], value["rgb"], value["speed"])
     elif action == "ping":
         backend.ping()
     elif action == "buzzer":
-        backend.buzzer(value["frequency"], value["duration"])
+        backend.buzzer(value["frequency"], value["duration"], device=value.get("device", "drone"))
     elif action == "sound_sequence":
-        backend.sound_sequence(value)
+        backend.sound_sequence(value["kind"], device=value.get("device", "drone"))
     elif action in ("square", "triangle", "circle", "sway"):
         backend.pattern(action, value["direction"], value["speed"], value["duration"])
     elif action == "avoid_wall":
         backend.avoid_wall(value["distance"], value["timeout"])
+    elif action == "keep_distance":
+        backend.keep_distance(value["distance"], value["timeout"])
+    elif action == "goto":
+        backend.goto_point(value["x"], value["y"], value["z"])
+    elif action == "turn_power":
+        backend.turn_power(value["direction"], value["power"], value["duration"])
+    elif action == "turn_to":
+        backend.turn_to(value)
+    elif action == "set_rpyt":
+        backend.set_rpyt(value["axis"], value["power"])
+    elif action == "move_apply":
+        backend.move_apply(value)
+    elif action == "reset_gyro":
+        backend.reset_gyro()
     elif action == "if_wall":
         if backend.detect_wall(value["distance"]):
             execute(backend, value["reaction"])
@@ -393,6 +480,18 @@ def api_run(data):
     return 200, {"ok": True, "steps": len(items)}
 
 
+def api_sensors(data):
+    """Read-only sensor snapshot for CODE Level 2 sensor blocks."""
+    unit = get_unit(data)
+    if unit is None:
+        return 404, {"ok": False, "error": "no_such_drone"}
+    try:
+        sensors = unit.backend.sensors()
+    except Exception:
+        sensors = {}
+    return 200, {"ok": True, "sensors": sensors}
+
+
 def api_stop(data):
     """STOP & LAND. Works from any device. drone_id optional: omit = ALL."""
     unit = get_unit(data)
@@ -430,6 +529,7 @@ POST_ROUTES = {
     "/api/control": api_control,
     "/api/command": api_command,
     "/api/run": api_run,
+    "/api/sensors": api_sensors,
     "/api/stop": api_stop,
     "/api/motors_off": api_motors_off,
 }

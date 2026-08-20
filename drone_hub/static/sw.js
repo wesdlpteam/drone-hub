@@ -1,13 +1,16 @@
 "use strict";
 
-const SHELL_CACHE = "drone-pilot-shell-v7";
+const SHELL_CACHE = "drone-pilot-shell-v8";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/style.css",
   "/app.js",
   "/blockly.min.js",
+  "/blockly-python.min.js",
+  "/js-interpreter.js",
   "/blocks-data.js",
+  "/program-runner.js",
   "/editor.js",
   "/manifest.webmanifest",
   "/icon.png",

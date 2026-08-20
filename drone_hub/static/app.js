@@ -339,6 +339,7 @@ async function poll() {
     }
 
     if (!$("pickOverlay").classList.contains("hidden")) renderDroneCards();
+    if (window.DroneEditor && DroneEditor.onStatus) DroneEditor.onStatus(s, d);
 
     const showMap = s.mode === "practice" && !!d;
     $("mapPanel").classList.toggle("hidden", !showMap);

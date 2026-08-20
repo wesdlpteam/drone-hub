@@ -3366,6 +3366,14 @@ body.rail-collapsed #railCollapseBtn {
 
 .code-page .python-panel .terminal-titlebar {
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.code-page .python-panel .terminal-titlebar .terminal-language {
+  margin-left: auto;
 }
 
 .code-page .python-panel.collapsed pre {
@@ -3455,12 +3463,167 @@ body.rail-collapsed #railCollapseBtn {
   font-size: 14px;
 }
 
-.drone-cat-flight { --cat-colour: #ffc86f; }
-.drone-cat-movement { --cat-colour: #ff9d2e; }
-.drone-cat-lights { --cat-colour: #c334ee; }
-.drone-cat-sound { --cat-colour: #586bdc; }
-.drone-cat-timing { --cat-colour: #ef4771; }
-.drone-cat-loops { --cat-colour: #9edced; }
-.drone-cat-sensors { --cat-colour: #9583f4; }
-.drone-cat-logic { --cat-colour: #48dbad; }
-.drone-cat-tricks { --cat-colour: #df7bea; }
+.drone-cat-row.blocklyToolboxSelected,
+.drone-cat-row[aria-selected="true"] {
+  background: #2444c9;
+}
+
+.drone-cat-icon::before { content: var(--cat-glyph, "\25A0"); font-size: 13px; }
+
+/* Level 2 categories (official CoDrone EDU grouping) */
+.drone-cat-events { --cat-colour: #f5a623; --cat-glyph: "🚩"; }
+.drone-cat-flight { --cat-colour: #3e75ff; --cat-glyph: "🚁"; }
+.drone-cat-sequences { --cat-colour: #31a3ff; --cat-glyph: "🌀"; }
+.drone-cat-lightsound { --cat-colour: #a45cf0; --cat-glyph: "💡"; }
+.drone-cat-sensors { --cat-colour: #f57a20; --cat-glyph: "📡"; }
+.drone-cat-console { --cat-colour: #2b4bd7; --cat-glyph: "🖥"; }
+.drone-cat-variables { --cat-colour: #38b449; --cat-glyph: "🏷"; }
+.drone-cat-functions { --cat-colour: #ef5da8; --cat-glyph: "𝑓"; }
+.drone-cat-control { --cat-colour: #d64230; --cat-glyph: "🔀"; }
+.drone-cat-math { --cat-colour: #5b79a3; --cat-glyph: "➗"; }
+.drone-cat-lists { --cat-colour: #15a08c; --cat-glyph: "📚"; }
+/* Level 1 picture categories */
+.drone-cat-p_fly { --cat-colour: #3e75ff; --cat-glyph: "🚁"; }
+.drone-cat-p_lights { --cat-colour: #a45cf0; --cat-glyph: "💡"; }
+.drone-cat-p_sounds { --cat-colour: #586bdc; --cat-glyph: "🔊"; }
+.drone-cat-p_tricks { --cat-colour: #df7bea; --cat-glyph: "✨"; }
+.drone-cat-p_loops { --cat-colour: #9edced; --cat-glyph: "🔁"; }
+
+/* ---- official-style header pills (Run / Land / Stop) ---- */
+.pill-group {
+  display: flex;
+  align-items: stretch;
+  background: #141b3d;
+  border: 1px solid #2a3a7a;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-left: 8px;
+}
+
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  background: transparent;
+  border: none;
+  color: #eaf2ff;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  min-height: 42px;
+}
+
+.pill-btn + .pill-btn { border-left: 1px solid #26336b; }
+.pill-btn:active { background: #1d2a5e; }
+.pill-run .pill-icon { color: #6ea8ff; }
+.pill-land .pill-icon { color: #9fb2d0; }
+.pill-stop .pill-icon { color: #ff5964; }
+.pill-run.running { background: #4a1420; }
+.pill-run.running .pill-icon { color: #ff5964; }
+
+/* ---- bottom-left drone connection box (official style) ---- */
+.blockly-stage {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.blockly-stage .blockly-host {
+  flex: 1;
+}
+
+.drone-conn-box {
+  position: absolute;
+  left: 10px;
+  bottom: 14px;
+  z-index: 80; /* Blockly's toolbox div sits at 70 */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  width: 190px;
+  background: rgba(8, 12, 34, 0.95);
+  border: 1px solid #3555d1;
+  border-radius: 12px;
+}
+
+.drone-conn-label {
+  display: block;
+  padding: 7px 10px;
+  border: 1px solid #c61d45;
+  border-radius: 8px;
+  color: #b9c4dc;
+  font-style: italic;
+  font-size: 12.5px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drone-conn-box.connected .drone-conn-label {
+  border-color: #17d28b;
+  color: #baf5df;
+  font-style: normal;
+}
+
+.drone-conn-btn {
+  align-self: center;
+  padding: 7px 22px;
+  border: none;
+  border-radius: 999px;
+  background: #3e75ff;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+body.rail-collapsed .drone-conn-box { display: none; }
+
+/* ---- Console / Python bottom panel tabs ---- */
+.panel-tab {
+  border: none;
+  background: transparent;
+  color: #8fa2c0;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.panel-tab.active {
+  background: #1d2a5e;
+  color: #eaf2ff;
+}
+
+.code-page .python-panel pre.hidden { display: none; }
+
+/* ---- CODE tab: maximise the workspace, shrink every other control ---- */
+body.code-tab-active header.instrument-strip { padding: 4px 12px; min-height: 0; }
+body.code-tab-active .instrument-strip .brand-label { display: none; }
+body.code-tab-active .instrument-strip .wordmark { font-size: 15px; }
+body.code-tab-active .instrument-strip .logo { width: 24px; height: 24px; }
+body.code-tab-active nav.tabs { padding: 4px 10px; }
+body.code-tab-active nav.tabs .tab { min-height: 32px; padding: 4px 20px; font-size: 13px; }
+body.code-tab-active .app-mode-tab { min-height: 32px; padding: 4px 12px; font-size: 12px; }
+body.code-tab-active .blockly-topbar { padding: 4px 10px; gap: 8px; }
+body.code-tab-active .rail-levels-label { display: none; }
+body.code-tab-active .rail-level-squares .level-btn { width: 30px; height: 30px; font-size: 14px; border-radius: 7px; }
+body.code-tab-active #railCollapseBtn { height: 30px; width: 26px; }
+body.code-tab-active .pill-btn { min-height: 32px; padding: 4px 12px; font-size: 13px; }
+body.code-tab-active .level-hint { font-size: 11px; }
+body.code-tab-active .save-status { font-size: 10px; }
+body.code-tab-active .block-count { font-size: 10px; }
+body.code-tab-active .blockly-topbar .btn-mid { min-height: 30px; padding: 3px 10px; font-size: 11px; }
+body.code-tab-active .emergency-bar { padding: 4px 10px; gap: 8px; min-height: 0; }
+body.code-tab-active .btn-stop-bar { min-height: 38px; padding: 4px 14px; }
+body.code-tab-active .btn-stop-bar .key-label { display: none; }
+body.code-tab-active .motors-guard .guard-label { display: none; }
+body.code-tab-active .btn-motors { min-height: 34px; padding: 4px 10px; font-size: 11px; }
+body.code-tab-active .drone-conn-box { width: 168px; padding: 8px; }
