@@ -28,6 +28,24 @@ test("official Level 2 drone blocks all exist", () => {
   for (const b of data.BLOCKS) assert.equal(b.json.type, b.type);
 });
 
+test("block shapes match the official app", () => {
+  for (const b of data.BLOCKS) {
+    const j = b.json;
+    if (b.type === "drone_start") {
+      assert.equal(j.nextStatement, null, "start hat connects downward");
+      assert.ok(!("previousStatement" in j) && !("output" in j), "start hat has no top plug");
+    } else if (b.sensor || b.type === "drone_time_now") {
+      assert.ok("output" in j, `${b.type} must be a value block (left plug)`);
+      assert.ok(!("previousStatement" in j) && !("nextStatement" in j),
+        `${b.type} must not stack`);
+    } else {
+      assert.equal(j.previousStatement, null, `${b.type} stacks below`);
+      assert.equal(j.nextStatement, null, `${b.type} stacks above`);
+      assert.ok(!("output" in j), `${b.type} is not a value block`);
+    }
+  }
+});
+
 test("level 1 toolbox is picture blocks only", () => {
   const l1 = data.toolboxForLevel(1);
   const types = l1.contents.flatMap((c) => c.contents.map((x) => x.type));

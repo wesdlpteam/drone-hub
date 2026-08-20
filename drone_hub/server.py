@@ -87,6 +87,7 @@ class DroneUnit:
         self.battery = 100
         self.current = None    # {"label", "step", "total"}
         self.message = ""
+        self.led_custom = False  # a block changed the LED; stop re-asserting
 
     def start(self):
         threading.Thread(target=self._worker, daemon=True).start()
@@ -119,6 +120,15 @@ class DroneUnit:
                     with state_lock:
                         self.battery = self.backend.get_battery()
                     last_battery = time.time()
+                    # Keep the drone's lights on its allocated colour so the
+                    # "Red drone" really glows red, even when it was switched
+                    # on after the Hub started. Skipped once a block set a
+                    # custom light.
+                    if not self.led_custom:
+                        try:
+                            self.backend.set_led(*self.rgb)
+                        except Exception:
+                            pass
                 continue
 
             with state_lock:
@@ -129,6 +139,8 @@ class DroneUnit:
             except Exception as exc:
                 with state_lock:
                     self.message = f"Command failed: {exc}"
+            if item["action"] in ("led", "led_off", "led_sequence"):
+                self.led_custom = True
             with state_lock:
                 self.current = None
                 self.battery = self.backend.get_battery()
@@ -429,11 +441,13 @@ def api_control(data):
         if pilot_ok(unit, data.get("token")):
             with state_lock:
                 unit.pilot = None
+                unit.led_custom = False  # back to its allocated colour
         return 200, {"ok": True}
     name = str(data.get("name", "")).strip()[:20] or "Pilot"
     token = uuid.uuid4().hex[:12]
     with state_lock:
         unit.pilot = {"name": name, "token": token}
+        unit.led_custom = False  # new pilot starts with the drone's own colour
     return 200, {"ok": True, "token": token, "name": name, "drone_id": unit.id}
 
 
