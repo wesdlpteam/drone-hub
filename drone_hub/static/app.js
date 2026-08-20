@@ -206,7 +206,32 @@ window.addEventListener("appinstalled", () => {
 });
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {
+  // Auto-update: when a new app shell is published, the fresh service worker
+  // takes over (skipWaiting + claim in sw.js) and we reload once so the app
+  // shows the latest version on first open, never mid-flight.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloadedForUpdate = false;
+  const reloadWhenIdle = () => {
+    if (reloadedForUpdate) return;
+    const busy = document.body.classList.contains("flying") ||
+      (window.DroneRunner && DroneRunner.isRunning());
+    if (busy) {
+      setTimeout(reloadWhenIdle, 5000);
+      return;
+    }
+    reloadedForUpdate = true;
+    location.reload();
+  };
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController) reloadWhenIdle();
+  });
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").then((reg) => {
+    reg.update().catch(() => {});
+    // iPad home-screen apps stay suspended for days; also check when foregrounded.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") reg.update().catch(() => {});
+    });
+  }).catch(() => {
     // Classroom HTTP still works as a Home Screen web app. Full offline
     // caching becomes available automatically on localhost or an HTTPS host.
   }));
