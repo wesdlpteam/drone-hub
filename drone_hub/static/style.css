@@ -414,7 +414,9 @@ body.radar-stale #modeChip::after {
   box-shadow: inset 0 2px 0 #02060b;
 }
 
-.battery-readout {
+.chip.readout.battery-readout {
+  /* three classes: must outrank .chip.readout's padding shorthand, or the
+     percentage text renders underneath the battery bars */
   --battery-1: #17263a;
   --battery-2: #17263a;
   --battery-3: #17263a;
@@ -3582,6 +3584,9 @@ body.rail-collapsed #railCollapseBtn {
 }
 
 body.rail-collapsed .drone-conn-box { display: none; }
+
+/* let the category list scroll clear of the connection box */
+.code-page .blocklyToolbox { padding-bottom: 118px; box-sizing: border-box; }
 
 /* ---- Console / Python bottom panel tabs ---- */
 .panel-tab {

@@ -53,6 +53,43 @@
 
   const UNIT_CM = { cm: 1, mm: 0.1, in: 2.54, m: 100 };
 
+  // ---- Level 1 picture symbols (inline SVG, work on every device) ----------
+  const STROKE = 'fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"';
+  const svgIcon = (body) => "data:image/svg+xml," + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g ${STROKE}>${body}</g></svg>`);
+  const ARROW = '<path d="M12 20V5"/><path d="M5.5 11L12 4.5 18.5 11"/>';
+  const rot = (deg, body) => `<g transform="rotate(${deg} 12 12)">${body}</g>`;
+  const ICONS = {
+    takeoff: svgIcon('<path d="M12 16V4.5"/><path d="M6 10l6-5.5 6 5.5"/><path d="M4 20h16"/>'),
+    land: svgIcon('<path d="M12 4v11.5"/><path d="M6 10l6 5.5 6-5.5"/><path d="M4 20h16"/>'),
+    hover: svgIcon('<rect x="6.4" y="4.5" width="3.6" height="15" rx="1.2" fill="#fff"/><rect x="14" y="4.5" width="3.6" height="15" rx="1.2" fill="#fff"/>'),
+    up: svgIcon(ARROW),
+    right: svgIcon(rot(90, ARROW)),
+    down: svgIcon(rot(180, ARROW)),
+    left: svgIcon(rot(270, ARROW)),
+    rise: svgIcon('<path d="M4 4.5h16"/><path d="M12 20V8"/><path d="M6.5 13.5L12 8l5.5 5.5"/>'),
+    descend: svgIcon('<path d="M4 19.5h16"/><path d="M12 4v12"/><path d="M6.5 10.5L12 16l5.5-5.5"/>'),
+    turn_left: svgIcon('<path d="M17.6 6.6A8 8 0 1 1 8 5"/><path d="M8.5 1.5L7.5 5l3.5 1.2"/>'),
+    turn_right: svgIcon('<path d="M6.4 6.6A8 8 0 1 0 16 5"/><path d="M15.5 1.5l1 3.5-3.5 1.2"/>'),
+    bulb: svgIcon('<path d="M12 3a6.2 6.2 0 0 1 3.6 11.2c-.8.6-1.1 1.5-1.1 2.3h-5c0-.8-.3-1.7-1.1-2.3A6.2 6.2 0 0 1 12 3z"/><path d="M10 20h4"/>'),
+    bulb_off: svgIcon('<path d="M12 3a6.2 6.2 0 0 1 3.6 11.2c-.8.6-1.1 1.5-1.1 2.3h-5c0-.8-.3-1.7-1.1-2.3A6.2 6.2 0 0 1 12 3z"/><path d="M10 20h4"/><path d="M4 4l16 16"/>'),
+    beep: svgIcon('<path d="M4 10v4h4l5 4.5v-13L8 10H4z" fill="#fff"/><path d="M16.5 9a4.5 4.5 0 0 1 0 6"/>'),
+    happy: svgIcon('<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0"/><circle cx="9" cy="9.5" r="0.6" fill="#fff"/><circle cx="15" cy="9.5" r="0.6" fill="#fff"/>'),
+    uhoh: svgIcon('<path d="M12 3.5L21.5 20h-19L12 3.5z"/><path d="M12 9.5v4.5"/><circle cx="12" cy="17" r="0.6" fill="#fff"/>'),
+    alarm: svgIcon('<path d="M12 3.5a6 6 0 0 1 6 6c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5a6 6 0 0 1 6-6z"/><path d="M10 19.5a2 2 0 0 0 4 0"/>'),
+    flip: svgIcon('<path d="M5 12a8 8 0 1 1 3.2 6.4"/><path d="M4 14.5L5 12l2.8 1.2"/>'),
+    square: svgIcon('<rect x="4.5" y="4.5" width="15" height="15" rx="1.5"/>'),
+    triangle: svgIcon('<path d="M12 4L21 19.5H3L12 4z"/>'),
+    circle: svgIcon('<circle cx="12" cy="12" r="8.5"/>'),
+    sway: svgIcon('<path d="M2.5 12c3-5.5 6.5-5.5 9.5 0s6.5 5.5 9.5 0"/>'),
+    repeat: svgIcon('<path d="M6 8h8.5a4.5 4.5 0 0 1 0 9H9.5"/><path d="M9.5 13.5L6 17l3.5 3"/>'),
+  };
+  const swatch = (name) => "data:image/svg+xml," + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="rgb(${(LED_COLOURS[name] || [255, 0, 0]).join(",")})" stroke="#fff" stroke-width="2"/></svg>`);
+  const img = (name, size) => ({ type: "field_image", src: ICONS[name], width: size || 24, height: size || 24, alt: name });
+  const iopt = (icon, label, value) => [{ src: ICONS[icon], width: 22, height: 22, alt: label }, value];
+  const copt = (name) => [{ src: swatch(name), width: 22, height: 22, alt: name }, name];
+
   const clampNum = (value, lo, hi, fallback) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return fallback;
@@ -187,35 +224,47 @@
       json: inline(stmt({ message0: "wait %1 second(s)", args0: [val("DUR")] })) },
     { type: "drone_time_now", cat: "control",
       json: out({ message0: "current time in %1", args0: [drop("UNIT", [["milliseconds", "ms"], ["seconds", "s"]])] }) },
-    // ---- Level 1 picture blocks
-    { type: "pic_takeoff", action: "takeoff", cat: "p_fly", json: stmt({ message0: "🛫 take off" }) },
-    { type: "pic_land", action: "land", cat: "p_fly", json: stmt({ message0: "🛬 land" }) },
+    // ---- Level 1 picture blocks (SVG symbols so pictures show everywhere)
+    { type: "pic_takeoff", action: "takeoff", cat: "p_fly",
+      json: stmt({ message0: "%1 take off", args0: [img("takeoff")] }) },
+    { type: "pic_land", action: "land", cat: "p_fly",
+      json: stmt({ message0: "%1 land", args0: [img("land")] }) },
     { type: "pic_go", action: "go", cat: "p_fly",
-      json: stmt({ message0: "%1 go %2 cm", args0: [
-        drop("DIR", [["⬆️ forward", "forward"], ["⬇️ backward", "backward"], ["⬅️ left", "left"], ["➡️ right", "right"], ["🔼 up", "up"], ["🔽 down", "down"]]),
+      json: stmt({ message0: "go %1 %2 cm", args0: [
+        drop("DIR", [iopt("up", "forward", "forward"), iopt("down", "backward", "backward"),
+          iopt("left", "left", "left"), iopt("right", "right", "right"),
+          iopt("rise", "up", "up"), iopt("descend", "down", "down")]),
         num("VALUE", 50, 20, 150, 10)] }) },
     { type: "pic_turn", action: "turn", cat: "p_fly",
-      json: stmt({ message0: "%1 turn %2", args0: [
-        drop("DIR", [["↩️ left", "left"], ["↪️ right", "right"]]),
+      json: stmt({ message0: "turn %1 %2", args0: [
+        drop("DIR", [iopt("turn_left", "left", "left"), iopt("turn_right", "right", "right")]),
         drop("VALUE", [["45°", "45"], ["90°", "90"], ["180°", "180"]])] }) },
     { type: "pic_hover", action: "hover", cat: "p_fly",
-      json: stmt({ message0: "⏸️ wait %1 second(s)", args0: [num("VALUE", 2, 1, 5, 1)] }) },
+      json: stmt({ message0: "%1 wait %2 second(s)", args0: [img("hover"), num("VALUE", 2, 1, 5, 1)] }) },
     { type: "pic_led", action: "led", cat: "p_lights",
-      json: stmt({ message0: "💡 light %1", args0: [drop("COLOUR", [
-        ["🔴 red", "red"], ["🟢 green", "green"], ["🔵 blue", "blue"], ["🟡 yellow", "yellow"],
-        ["🟣 purple", "purple"], ["⚪ white", "white"], ["🩷 pink", "pink"], ["🟠 orange", "orange"]])] }) },
-    { type: "pic_led_off", action: "led_off", cat: "p_lights", json: stmt({ message0: "⚫ light off" }) },
-    { type: "pic_beep", action: "ping", cat: "p_sounds", json: stmt({ message0: "📣 beep and blink" }) },
+      json: stmt({ message0: "%1 light %2", args0: [img("bulb"),
+        drop("COLOUR", ["red", "green", "blue", "yellow", "purple", "white", "pink", "orange"].map(copt))] }) },
+    { type: "pic_led_off", action: "led_off", cat: "p_lights",
+      json: stmt({ message0: "%1 light off", args0: [img("bulb_off")] }) },
+    { type: "pic_beep", action: "ping", cat: "p_sounds",
+      json: stmt({ message0: "%1 beep and blink", args0: [img("beep")] }) },
     { type: "pic_sound", action: "sound_sequence", cat: "p_sounds",
-      json: stmt({ message0: "🎵 play %1", args0: [drop("KIND", [["happy 😊", "success"], ["uh-oh 😮", "warning"], ["alarm 🚨", "error"]])] }) },
+      json: stmt({ message0: "play %1", args0: [drop("KIND", [
+        iopt("happy", "happy", "success"), iopt("uhoh", "uh-oh", "warning"), iopt("alarm", "alarm", "error")])] }) },
     { type: "pic_flip", action: "flip", cat: "p_tricks",
-      json: stmt({ message0: "🤸 flip %1", args0: [drop("DIR", [["back", "back"], ["front", "front"], ["left", "left"], ["right", "right"]])] }) },
-    { type: "pic_square", action: "square", cat: "p_tricks", json: stmt({ message0: "⬛ fly a square" }) },
-    { type: "pic_triangle", action: "triangle", cat: "p_tricks", json: stmt({ message0: "🔺 fly a triangle" }) },
-    { type: "pic_circle", action: "circle", cat: "p_tricks", json: stmt({ message0: "⭕ fly a circle" }) },
-    { type: "pic_sway", action: "sway", cat: "p_tricks", json: stmt({ message0: "🌊 sway" }) },
+      json: stmt({ message0: "%1 flip %2", args0: [img("flip"), drop("DIR", [
+        iopt("down", "back", "back"), iopt("up", "front", "front"),
+        iopt("left", "left", "left"), iopt("right", "right", "right")])] }) },
+    { type: "pic_square", action: "square", cat: "p_tricks",
+      json: stmt({ message0: "%1 fly a square", args0: [img("square")] }) },
+    { type: "pic_triangle", action: "triangle", cat: "p_tricks",
+      json: stmt({ message0: "%1 fly a triangle", args0: [img("triangle")] }) },
+    { type: "pic_circle", action: "circle", cat: "p_tricks",
+      json: stmt({ message0: "%1 fly a circle", args0: [img("circle")] }) },
+    { type: "pic_sway", action: "sway", cat: "p_tricks",
+      json: stmt({ message0: "%1 sway", args0: [img("sway")] }) },
     { type: "pic_repeat", action: "repeat", cat: "p_loops",
-      json: { message0: "🔁 repeat %1 times", args0: [num("TIMES", 2, 2, 5, 1)],
+      json: { message0: "%1 repeat %2 times", args0: [img("repeat"), num("TIMES", 2, 2, 5, 1)],
         message1: "%1", args1: [{ type: "input_statement", name: "DO" }],
         previousStatement: null, nextStatement: null } },
     // ---- Registered for old saves only (no toolbox)
