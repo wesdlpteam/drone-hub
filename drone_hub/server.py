@@ -68,6 +68,7 @@ state_lock = threading.Lock()
 paused = False
 hub_url = ""
 mode = "practice"
+practice_reason = None  # why we are in practice: chosen/no_controller/library/connect_failed
 units = []  # list of DroneUnit
 
 
@@ -429,6 +430,7 @@ def api_status():
         "mode": mode,
         "paused": p,
         "url": hub_url,
+        "practice_reason": practice_reason,
         "drones": [u.snapshot() for u in units],
     }
 
@@ -624,11 +626,16 @@ def lan_ip():
 
 def build_units():
     """Detect real controllers; fall back to virtual drones."""
-    global mode
+    global mode, practice_reason
     force_practice = "--practice" in sys.argv
 
     if not force_practice:
-        ports = detect_controller_ports()
+        try:
+            import serial.tools.list_ports  # noqa: F401  (part of pyserial)
+            serial_ok = True
+        except ImportError:
+            serial_ok = False
+        ports = detect_controller_ports() if serial_ok else []
         real_units = []
         for i, port in enumerate(ports[:len(COLOURS)]):
             name, rgb = COLOURS[i]
@@ -646,6 +653,23 @@ def build_units():
         if real_units:
             mode = "real"
             return real_units
+        # Fell through to Practice Mode: say why, loudly.
+        if not serial_ok:
+            practice_reason = "library"
+            print("  ! The real-drone library is not installed, so real drones")
+            print("    are unavailable. Practice flying still works.")
+        elif not ports:
+            practice_reason = "no_controller"
+            print("  ! No drone controller was found on USB.")
+            print("    Plug each controller in with its USB cable (it should")
+            print("    click in firmly), then close this window and run")
+            print("    Start Drone Hub again.")
+        else:
+            practice_reason = "connect_failed"
+            print("  ! A controller was found but would not connect.")
+            print("    Unplug it, plug it back in, and run Start Drone Hub again.")
+    else:
+        practice_reason = "chosen"
 
     mode = "practice"
     out = []

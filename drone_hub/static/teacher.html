@@ -573,6 +573,10 @@
   </div>
 </header>
 
+<div id="practiceBanner" hidden style="margin: 14px auto 0; max-width: 1080px; padding: 12px 18px;
+  border: 1px solid #b8860b; border-radius: 10px; background: #241a05; color: #ffd98a;
+  font-weight: 600; line-height: 1.45;"></div>
+
 <div class="teacher-wrap">
 
   <div class="teacher-grid">
@@ -715,6 +719,18 @@ async function poll() {
     drawQR(s.url);
     $("modeChip").textContent = (s.mode === "practice" ? "PRACTICE · " : "LIVE · ")
       + s.drones.length + " drone" + (s.drones.length === 1 ? "" : "s");
+    const reasons = {
+      no_controller: "Practice Mode: no drone controller was found on USB. " +
+        "Plug each controller in firmly with its USB cable, then close the " +
+        "black hub window and run Start Drone Hub again.",
+      connect_failed: "Practice Mode: a controller was found but would not " +
+        "connect. Unplug it, plug it back in, and run Start Drone Hub again.",
+      library: "Practice Mode: the real-drone software is not installed on " +
+        "this laptop, so real drones are unavailable. Practice flying still works.",
+    };
+    const banner = $("practiceBanner");
+    banner.hidden = !(s.mode === "practice" && reasons[s.practice_reason]);
+    if (!banner.hidden) banner.textContent = reasons[s.practice_reason];
     renderFleet(s.drones, s.paused);
     paused = s.paused;
     const b = $("pauseBtn");
